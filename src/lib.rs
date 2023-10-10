@@ -72,6 +72,7 @@ impl PlayerVecMap {
         }
     }
 
+    /// deletes ONLY from self.player_list. Use delete() to also delete from self.name_dict
     fn delete_at(&mut self, index: usize) {
         self.player_list.remove(index);
 
@@ -81,6 +82,20 @@ impl PlayerVecMap {
                 *idx -= 1
             }
         }
+    }
+
+    /// deletes from BOTH self.player_list and self.name_dict. Use delete_at() to only delete from self.player_list
+    fn delete(&mut self, username: &str) {
+        if let Some(index) = self.name_dict.remove(username) {
+            self.player_list.remove(index);
+
+            // After deleting the elements in the vec, all elements after it are shifted to the left. Update the indices
+            for (_, idx) in self.name_dict.iter_mut() {
+                if *idx > index {
+                    *idx -= 1
+                }
+            }
+        };
     }
 
     /// Deletes all players whose comment is an empty string
@@ -104,6 +119,15 @@ impl PlayerVecMap {
     }
 
     fn join(&mut self, username: &str) {
+        self.add_player(username, "".to_string());
+
+        if let Some(index) = self.name_dict.get(username) {
+            let player = &mut self.player_list[*index];
+            player.in_squad = true;
+        };
+    }
+
+    fn add_player(&mut self, username: &str, comment: String) {
         let add = !self.name_dict.contains_key(username);
         if add {
             let new_item_index = self.player_list.len();
@@ -111,16 +135,11 @@ impl PlayerVecMap {
             self.player_list.push(Player {
                 name: username.to_string(),
                 lowercase_name: username.to_lowercase(),
-                comment: "".to_string(),
+                comment,
                 lowercase_comment: "".to_string(),
                 in_squad: false
             });
         }
-
-        if let Some(index) = self.name_dict.get(username) {
-            let player = &mut self.player_list[*index];
-            player.in_squad = true;
-        };
     }
 }
 
@@ -160,7 +179,8 @@ struct State {
     flags: Flags,
     filters: Filters,
     inactive_color: [f32;4],
-    comment_size: [f32;2]
+    comment_size: [f32;2],
+    add_user_text: String,
 }
 
 impl State {
@@ -171,7 +191,8 @@ impl State {
             flags: Flags::new(),
             filters: Filters::new(),
             inactive_color: DEFAULT_INACTIVE_COLOR,
-            comment_size: DEFAULT_COMMENT_SIZE
+            comment_size: DEFAULT_COMMENT_SIZE,
+            add_user_text: "".to_string()
         }
     }
 }
@@ -398,21 +419,36 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
             ];
             {
                 let mut state = get_state();
+                let state = state.deref_mut();
                 ui.checkbox("Show all", &mut state.flags.show_all);
+
+                ui.separator();
+                ui.text("Add user:");
+                ui.input_text("##add_user", &mut state.add_user_text).build();
+                ui.same_line();
+                if ui.button("Add") {
+                    if !state.add_user_text.is_empty() {
+                        state.players.add_player(&state.add_user_text, "Comment here".to_string());
+                        state.add_user_text = "".to_string();
+                    }
+                };
+
+                ui.separator();
                 ui.text("Filters:");
                 if ui.input_text("##user_filter", &mut state.filters.user_filter_str).build() {
                     state.filters.user_filter_str = state.filters.user_filter_str.to_lowercase()
                 };
                 if ui.is_item_hovered() {
-                    ui.tooltip(|| ui.text("Filter by user name"))
+                    ui.tooltip_text("Filter by user name")
                 }
                 if ui.input_text("##comment_filter", &mut state.filters.comment_filter_str).build() {
                     state.filters.comment_filter_str = state.filters.comment_filter_str.to_lowercase()
                 };
                 if ui.is_item_hovered() {
-                    ui.tooltip(|| ui.text("Filter by comment"))
+                    ui.tooltip_text("Filter by comment")
                 }
             }
+            let mut action = None;
             if let Some(table) = ui.begin_table_header("PLayerListTable", column_data) {
                 let mut state = get_state();
                 let state = state.deref_mut();
@@ -429,11 +465,19 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
                         continue;
                     }
                     ui.table_next_column();
+                    if ui.button(format!("X##delete_{i}")) {
+                        action = Some(Action::DeletePlayer(player.name.clone()))
+                    }
+                    if ui.is_item_hovered() {
+                        ui.tooltip_text("Delete this player\nfrom the list")
+                    }
+                    ui.same_line();
                     if player.in_squad {
                         ui.text(&player.name);
                     } else {
                         ui.text_colored(state.inactive_color, &player.name)
                     }
+
                     ui.table_next_column();
                     if ui.input_text_multiline(format!("##{i}"), &mut player.comment, state.comment_size).build() {
                         player.lowercase_comment = player.comment.to_lowercase()
@@ -441,10 +485,20 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
                 }
                 table.end()
             };
+
+            if let Some(action) = action {
+                match action {
+                    Action::DeletePlayer(username) => get_state().players.delete(&username),
+                }
+            }
         });
     }
 
     get_state().flags.display_window = opened_window;
+}
+
+enum Action {
+    DeletePlayer(String)
 }
 
 fn options(ui: &Ui, window_name: Option<&str>) -> bool {
@@ -459,7 +513,7 @@ fn options_tab(ui: &Ui) {
     let mut state = get_state();
     ColorEdit::new("Inactive player", &mut state.inactive_color).build(ui);
     if ui.is_item_hovered() {
-        ui.tooltip(|| ui.text("Color of the names of players out of the squad"))
+        ui.tooltip_text("Color of the names of players out of the squad")
     }
 
     ui.input_float2("Comment Size", &mut state.comment_size).build();
