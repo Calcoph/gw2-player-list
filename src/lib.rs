@@ -1,5 +1,5 @@
 use std::{collections::HashMap, sync::{Mutex, MutexGuard}, io::Write, fs::File, ops::DerefMut};
-use arcdps::{extras::{UserInfoIter, ExtrasAddonInfo}, callbacks::{ImguiCallback, OptionsWindowsCallback}, imgui::{Ui, TableColumnSetup, ColorEdit}};
+use arcdps::{callbacks::{ImguiCallback, OptionsWindowsCallback}, exports, extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{ColorEdit, Io, TableColumnSetup, Ui}};
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 
@@ -13,6 +13,7 @@ arcdps::export! {
     extras_squad_update: squad_update,
     options_windows: options,
     options_end: options_tab,
+    wnd_nofilter: nofilter
 }
 
 struct Player {
@@ -181,6 +182,7 @@ struct State {
     inactive_color: [f32;4],
     comment_size: [f32;2],
     add_user_text: String,
+    shortcut_char: Option<char>,
 }
 
 impl State {
@@ -192,7 +194,8 @@ impl State {
             filters: Filters::new(),
             inactive_color: DEFAULT_INACTIVE_COLOR,
             comment_size: DEFAULT_COMMENT_SIZE,
-            add_user_text: "".to_string()
+            add_user_text: "".to_string(),
+            shortcut_char: None
         }
     }
 }
@@ -208,6 +211,7 @@ const SHOW_ALL: &'static str = "ShowAll";
 const COMMENT_SIZE: &'static str = "CommentSize";
 const DEFAULT_INACTIVE_COLOR: [f32;4] = [0.5,0.5,0.5,1.0];
 const DEFAULT_COMMENT_SIZE: [f32;2] = [300.0, 20.0];
+const SHORTCUT: &'static str = "ShortcutKey";
 
 fn init() -> Result<(), String> {
     // May return an error to indicate load failure
@@ -263,12 +267,26 @@ fn init() -> Result<(), String> {
         _ => false,
     };
 
+    let shortcut_char = match config.remove(SHORTCUT) {
+        Some(Value::String(s)) => {
+            if s.len() == 1 {
+                s.chars()
+                    .next()
+                    .filter(|c| ('A'..='Z').contains(c))
+            } else {
+                None
+            }
+        },
+        _ => None
+    };
+
     let mut state = get_state();
     state.players = player_list;
     state.flags.display_window = display_window;
     state.flags.show_all = show_all;
     state.inactive_color = inactive_color;
     state.comment_size = comment_size;
+    state.shortcut_char = shortcut_char;
 
     Ok(())
 }
@@ -345,6 +363,7 @@ fn release() {
         .map(|val| Value::Float(val as f64)).collect();
     config.insert(COMMENT_SIZE.to_string(), Value::Array(comment_size));
     config.insert(SHOW_ALL.to_string(), Value::Boolean(state.flags.show_all));
+    config.insert(SHORTCUT.to_string(), Value::String(state.shortcut_char.map_or("".to_string(), |c| c.to_string())));
 
     let toml_string = toml::to_string(&Value::Table(config)).unwrap();
     std::fs::write(CONFIG_PATH, toml_string).unwrap()
@@ -395,7 +414,7 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
     }
 
     if !state.flags.extras_initialized {
-        arcdps::imgui::Window::new("Player List Error").build(ui, || {
+        arcdps::imgui::Window::new("Player List Error").collapsible(false).build(ui, || {
             ui.text("Unofficial extras extension required")
         });
 
@@ -517,8 +536,42 @@ fn options_tab(ui: &Ui) {
     }
 
     ui.input_float2("Comment Size", &mut state.comment_size).build();
+
+    let mut s = match state.shortcut_char {
+        Some(c) => c.to_string(),
+        None => "".to_string(),
+    };
+
+    if ui.input_text("Shortcut", &mut s).build() {
+        let s = s.to_uppercase();
+        match s.chars().rev().next() {
+            c @ Some('A'..='Z') => state.shortcut_char = c,
+            _ => state.shortcut_char = None
+        }
+    };
 }
 
 fn log(msg: &str) {
     writeln!(File::options().create(true).append(true).open(TMP_PATH).unwrap(), "{msg}").unwrap();
+}
+
+fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
+    let io = unsafe { &*(arcdps::imgui::sys::igGetIO() as *const Io) };
+
+    let modifiers = exports::modifiers();
+    let mut state = get_state();
+    if key_down && !holding_key {
+        if io.keys_down[modifiers.modifier1 as usize] && io.keys_down[modifiers.modifier2 as usize] {
+            // Both modifier keys have been pressed
+            // modifiers are alt+shift by default
+            if let Some(c) = state.shortcut_char {
+                if io.keys_down[c as usize] {
+                    state.flags.display_window = !state.flags.display_window;
+                    return false
+                }
+            }
+        }
+    }
+
+    true
 }
