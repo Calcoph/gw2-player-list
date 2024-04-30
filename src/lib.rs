@@ -1,7 +1,8 @@
-use std::{collections::HashMap, sync::{Mutex, MutexGuard}, io::Write, fs::File, ops::DerefMut};
+use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
 use arcdps::{callbacks::{ImguiCallback, OptionsWindowsCallback}, exports, extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{ColorEdit, Io, TableColumnSetup, Ui}};
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
+use windows::System::VirtualKey;
 
 arcdps::export! {
     name: "Player List",
@@ -13,7 +14,8 @@ arcdps::export! {
     extras_squad_update: squad_update,
     options_windows: options,
     options_end: options_tab,
-    wnd_nofilter: nofilter
+    wnd_filter: shortcuts,
+    wnd_nofilter: nofilter,
 }
 
 struct Player {
@@ -182,7 +184,8 @@ struct State {
     inactive_color: [f32;4],
     comment_size: [f32;2],
     add_user_text: String,
-    shortcut_char: Option<char>,
+    shortcut_char: Option<VirtualKey>,
+    listening_to_key: bool,
 }
 
 impl State {
@@ -195,7 +198,8 @@ impl State {
             inactive_color: DEFAULT_INACTIVE_COLOR,
             comment_size: DEFAULT_COMMENT_SIZE,
             add_user_text: "".to_string(),
-            shortcut_char: None
+            shortcut_char: None,
+            listening_to_key: false
         }
     }
 }
@@ -268,15 +272,50 @@ fn init() -> Result<(), String> {
     };
 
     let shortcut_char = match config.remove(SHORTCUT) {
-        Some(Value::String(s)) => {
+        Some(Value::String(s)) => { // For compatibility with 0.1.2
             if s.len() == 1 {
-                s.chars()
+                let c = s.chars()
                     .next()
-                    .filter(|c| ('A'..='Z').contains(c))
+                    .filter(|c| ('A'..='Z').contains(c));
+                match c {
+                    Some(c) => match c {
+                        'A' => Some(VirtualKey::A),
+                        'B' => Some(VirtualKey::B),
+                        'C' => Some(VirtualKey::C),
+                        'D' => Some(VirtualKey::D),
+                        'E' => Some(VirtualKey::E),
+                        'F' => Some(VirtualKey::F),
+                        'G' => Some(VirtualKey::G),
+                        'H' => Some(VirtualKey::H),
+                        'I' => Some(VirtualKey::I),
+                        'J' => Some(VirtualKey::J),
+                        'K' => Some(VirtualKey::K),
+                        'L' => Some(VirtualKey::L),
+                        'M' => Some(VirtualKey::M),
+                        'N' => Some(VirtualKey::N),
+                        'O' => Some(VirtualKey::O),
+                        'P' => Some(VirtualKey::P),
+                        'Q' => Some(VirtualKey::Q),
+                        'R' => Some(VirtualKey::R),
+                        'S' => Some(VirtualKey::S),
+                        'T' => Some(VirtualKey::T),
+                        'U' => Some(VirtualKey::U),
+                        'V' => Some(VirtualKey::V),
+                        'W' => Some(VirtualKey::W),
+                        'X' => Some(VirtualKey::X),
+                        'Y' => Some(VirtualKey::Y),
+                        'Z' => Some(VirtualKey::Z),
+                        _ => None
+                    },
+                    None => None,
+                }
             } else {
                 None
             }
         },
+        Some(Value::Integer(i)) => {
+            Some(VirtualKey(i as i32))
+        }
         _ => None
     };
 
@@ -363,7 +402,9 @@ fn release() {
         .map(|val| Value::Float(val as f64)).collect();
     config.insert(COMMENT_SIZE.to_string(), Value::Array(comment_size));
     config.insert(SHOW_ALL.to_string(), Value::Boolean(state.flags.show_all));
-    config.insert(SHORTCUT.to_string(), Value::String(state.shortcut_char.map_or("".to_string(), |c| c.to_string())));
+    if let Some(i) = state.shortcut_char {
+        config.insert(SHORTCUT.to_string(), Value::Integer(i.0 as i64));
+    }
 
     let toml_string = toml::to_string(&Value::Table(config)).unwrap();
     std::fs::write(CONFIG_PATH, toml_string).unwrap()
@@ -537,41 +578,91 @@ fn options_tab(ui: &Ui) {
 
     ui.input_float2("Comment Size", &mut state.comment_size).build();
 
-    let mut s = match state.shortcut_char {
-        Some(c) => c.to_string(),
-        None => "".to_string(),
-    };
+    match state.shortcut_char {
+        Some(c) => ui.text(format!("Shortcut: {}", vk_to_text(c))),
+        None => ui.text("No shortcut set"),
+    }
 
-    if ui.input_text("Shortcut", &mut s).build() {
-        let s = s.to_uppercase();
-        match s.chars().rev().next() {
-            c @ Some('A'..='Z') => state.shortcut_char = c,
-            _ => state.shortcut_char = None
+    ui.same_line();
+    if ui.button("X") {
+        state.shortcut_char = None
+    }
+
+    if state.listening_to_key {
+        ui.same_line();
+        ui.text("Listening ... ");
+        ui.same_line();
+        if ui.button("Cancel") {
+            state.listening_to_key = false;
+            state.shortcut_char = None
         }
-    };
+    } else {
+        ui.same_line();
+        if ui.button("Set shortcut") {
+            state.listening_to_key = true
+        }
+    }
 }
 
 fn log(msg: &str) {
     writeln!(File::options().create(true).append(true).open(TMP_PATH).unwrap(), "{msg}").unwrap();
 }
 
-fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
-    let io = unsafe { &*(arcdps::imgui::sys::igGetIO() as *const Io) };
-
-    let modifiers = exports::modifiers();
+fn shortcuts(key: usize, key_down: bool, holding_key: bool) -> bool {
     let mut state = get_state();
     if key_down && !holding_key {
-        if io.keys_down[modifiers.modifier1 as usize] && io.keys_down[modifiers.modifier2 as usize] {
-            // Both modifier keys have been pressed
-            // modifiers are alt+shift by default
-            if let Some(c) = state.shortcut_char {
-                if io.keys_down[c as usize] {
-                    state.flags.display_window = !state.flags.display_window;
-                    return false
-                }
+        // Both modifier keys have been pressed
+        // modifiers are alt+shift by default
+        if let Some(c) = state.shortcut_char {
+            if key == c.0 as usize {
+                state.flags.display_window = !state.flags.display_window;
+                return false
             }
         }
     }
 
     true
+}
+
+fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
+    let mut state = get_state();
+    if key_down && !holding_key && state.listening_to_key {
+        state.listening_to_key = false;
+        state.shortcut_char = Some(VirtualKey(key as i32));
+        return false
+    }
+
+    true
+}
+
+fn vk_to_text(vk: VirtualKey) -> String {
+    match vk {
+        VirtualKey::A => "A".to_string(),
+        VirtualKey::B => "B".to_string(),
+        VirtualKey::C => "C".to_string(),
+        VirtualKey::D => "D".to_string(),
+        VirtualKey::E => "E".to_string(),
+        VirtualKey::F => "F".to_string(),
+        VirtualKey::G => "G".to_string(),
+        VirtualKey::H => "H".to_string(),
+        VirtualKey::I => "I".to_string(),
+        VirtualKey::J => "J".to_string(),
+        VirtualKey::K => "K".to_string(),
+        VirtualKey::L => "L".to_string(),
+        VirtualKey::M => "M".to_string(),
+        VirtualKey::N => "N".to_string(),
+        VirtualKey::O => "O".to_string(),
+        VirtualKey::P => "P".to_string(),
+        VirtualKey::Q => "Q".to_string(),
+        VirtualKey::R => "R".to_string(),
+        VirtualKey::S => "S".to_string(),
+        VirtualKey::T => "T".to_string(),
+        VirtualKey::U => "U".to_string(),
+        VirtualKey::V => "V".to_string(),
+        VirtualKey::W => "W".to_string(),
+        VirtualKey::X => "X".to_string(),
+        VirtualKey::Y => "Y".to_string(),
+        VirtualKey::Z => "Z".to_string(),
+        VirtualKey(key) => format!("Key<{key}>")
+    }
 }
