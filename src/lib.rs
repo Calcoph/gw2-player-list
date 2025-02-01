@@ -416,7 +416,7 @@ fn get_state<'a>() -> MutexGuard<'a, State>{
 
 fn squad_update(users: UserInfoIter) {
     for user in users {
-        if let Some(username) = user.account_name {
+        if let Some(username) = user.account_name() {
             match user.role {
                 arcdps::extras::UserRole::None => remove_user(username),
                 _ => add_user(username),
