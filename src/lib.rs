@@ -1,5 +1,5 @@
 use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
-use arcdps::{callbacks::{ImguiCallback, OptionsWindowsCallback}, exports, extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{ColorEdit, Io, TableColumnSetup, Ui}};
+use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{ColorEdit, TableColumnSetup, Ui}};
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 use windows::System::VirtualKey;
