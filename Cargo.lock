@@ -333,7 +333,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "player-list"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "arcdps",
  "once_cell",
