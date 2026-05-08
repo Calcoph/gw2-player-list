@@ -1,5 +1,7 @@
+#![allow(static_mut_refs)]
+
 use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
-use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{ColorEdit, TableColumnSetup, Ui}};
+use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{TableColumnSetup, Ui}};
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 use windows::System::VirtualKey;
@@ -217,7 +219,7 @@ const DEFAULT_INACTIVE_COLOR: [f32;4] = [0.5,0.5,0.5,1.0];
 const DEFAULT_COMMENT_SIZE: [f32;2] = [300.0, 20.0];
 const SHORTCUT: &'static str = "ShortcutKey";
 
-fn init() -> Result<(), String> {
+fn init() -> Result<(), Option<String>> {
     // May return an error to indicate load failure
 
     let toml_string = std::fs::read_to_string(CONFIG_PATH).unwrap_or_default();
@@ -455,7 +457,7 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
     }
 
     if !state.flags.extras_initialized {
-        arcdps::imgui::Window::new("Player List Error").collapsible(false).build(ui, || {
+        ui.window("Player List Error").collapsible(false).build(|| {
             ui.text("Unofficial extras extension required")
         });
 
@@ -465,7 +467,7 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
     let mut opened_window = state.flags.display_window;
     std::mem::drop(state); // liberates the mutex so get_state() can be called again from the closure in .build()
     if opened_window {
-        arcdps::imgui::Window::new("Player List").opened(&mut opened_window).collapsible(false).build(ui, || {
+        ui.window("Player List").opened(&mut opened_window).collapsible(false).build(|| {
             let column_data = [
                 // max character length of account name = 32 characters
                 TableColumnSetup {
@@ -571,7 +573,7 @@ fn options(ui: &Ui, window_name: Option<&str>) -> bool {
 
 fn options_tab(ui: &Ui) {
     let mut state = get_state();
-    ColorEdit::new("Inactive player", &mut state.inactive_color).build(ui);
+    ui.color_edit4("Inactive player", &mut state.inactive_color);
     if ui.is_item_hovered() {
         ui.tooltip_text("Color of the names of players out of the squad")
     }
