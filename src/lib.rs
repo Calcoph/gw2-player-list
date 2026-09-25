@@ -1,7 +1,7 @@
 #![allow(static_mut_refs)]
 
 use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
-use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{TableColumnSetup, Ui}};
+use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{InputTextFlags, TableColumnSetup, Ui}};
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 use windows::System::VirtualKey;
@@ -329,16 +329,22 @@ fn init() -> Result<(), Option<String>> {
     state.comment_size = comment_size;
     state.shortcut_char = shortcut_char;
 
+    #[cfg(debug_assertions)] // In order to work with arcdps_mock
+    extras_initializer(state, Some("abcdtest"));
+
     Ok(())
 }
 
-fn init_extras(_: ExtrasAddonInfo, self_name: Option<&str>) {
-    let mut state = get_state();
-
+fn extras_initializer(mut state: MutexGuard<'_, State>, self_name: Option<&str>) {
     if let Some(self_name) = self_name {
         state.flags.extras_initialized = true;
         state.self_name = self_name.to_owned();
     }
+}
+
+fn init_extras(_: ExtrasAddonInfo, self_name: Option<&str>) {
+    let state = get_state();
+    extras_initializer(state, self_name);
 }
 
 fn init_player_list(config: &mut Map<String, Value>) -> PlayerVecMap {
@@ -535,9 +541,9 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
                     }
                     ui.same_line();
                     if player.in_squad {
-                        ui.text(&player.name);
+                        text(ui, &mut player.name);
                     } else {
-                        ui.text_colored(state.inactive_color, &player.name)
+                        text_colored(ui, state.inactive_color, &mut player.name);
                     }
 
                     ui.table_next_column();
@@ -557,6 +563,24 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
     }
 
     get_state().flags.display_window = opened_window;
+}
+
+fn text(ui: &Ui, txt: &mut String) {
+    let tok = ui.push_style_color(arcdps::imgui::StyleColor::FrameBg, [0.0,0.0,0.0,0.0]);
+    ui.input_text(format!("##selectable_text{txt}"), txt)
+        .flags(InputTextFlags::READ_ONLY)
+        .build();
+    tok.end();
+}
+
+fn text_colored(ui: &Ui, color: [f32;4], txt: &mut String) {
+    let tok = ui.push_style_color(arcdps::imgui::StyleColor::Text, color);
+    let tok2 = ui.push_style_color(arcdps::imgui::StyleColor::FrameBg, [0.0,0.0,0.0,0.0]);
+    ui.input_text(format!("##selectable_text{txt}"), txt)
+        .flags(InputTextFlags::READ_ONLY)
+        .build();
+    tok2.end();
+    tok.end();
 }
 
 enum Action {
