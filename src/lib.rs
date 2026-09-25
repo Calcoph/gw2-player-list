@@ -3,12 +3,14 @@ const VERSION_MAJOR: u32 = 1;
 const VERSION_MINOR: u32 = 0;
 const VERSION_PATCH: u32 = 0;
 
-use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
+use std::{collections::HashMap, ops::DerefMut, sync::{Mutex, MutexGuard}};
 use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{InputTextFlags, TableColumnSetup, Ui}};
 use const_format::formatcp;
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 use windows::System::VirtualKey;
+
+mod config;
 
 arcdps::export! {
     name: "Player List",
@@ -197,184 +199,23 @@ struct State {
     auto_check_beta: bool,
 }
 
-impl State {
-    fn new() -> State {
-        State {
-            players: PlayerVecMap::new(),
-            self_name: "".to_string(),
-            flags: Flags::new(),
-            filters: Filters::new(),
-            inactive_color: DEFAULT_INACTIVE_COLOR,
-            comment_size: DEFAULT_COMMENT_SIZE,
-            add_user_text: "".to_string(),
-            shortcut_char: None,
-            listening_to_key: false,
-            auto_check_update: DEFAULT_AUTO_CHECK_UPDATE,
-            auto_check_beta: DEFAULT_AUTO_CHECK_BETA,
-        }
-    }
-}
+static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(config::default_state()));
 
-static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::new()));
-const CONFIG_PATH: &'static str = "addons/arcdps/player_list.toml";
-const TMP_PATH: &'static str = "addons/arcdps/player_list.tmp";
-const CURRENT_CONFIG_VERSION: i64 = 1;
-
-const PLAYERS: &'static str = "Players";
-const OPENED_WINDOW: &'static str = "WindowOpen";
-const INACTIVE_COLOR: &'static str = "InactiveColor";
-const SHOW_ALL: &'static str = "ShowAll";
-const COMMENT_SIZE: &'static str = "CommentSize";
-const AUTO_CHECK_UPDATE: &'static str = "AutoCheckUpdate";
-const AUTO_CHECK_BETA: &'static str = "AutoCheckBeta";
-const CONFIG_VERSION: &'static str = "ConfigVersion";
-const DEFAULT_INACTIVE_COLOR: [f32;4] = [0.5,0.5,0.5,1.0];
-const DEFAULT_COMMENT_SIZE: [f32;2] = [300.0, 20.0];
-const DEFAULT_AUTO_CHECK_UPDATE: bool = true;
-const DEFAULT_AUTO_CHECK_BETA: bool = false;
-const SHORTCUT: &'static str = "ShortcutKey";
 
 fn init() -> Result<(), Option<String>> {
     // May return an error to indicate load failure
 
-    let toml_string = std::fs::read_to_string(CONFIG_PATH).unwrap_or_default();
-    let mut config = match toml::from_str::<Value>(&toml_string)
-        .unwrap_or(Value::Table(Map::new())) {
-            Value::Table(config) => config,
-            _ => Map::new()
-        };
-
-    let player_list = init_player_list(&mut config);
-    let version = match config.remove(CONFIG_VERSION) {
-        Some(Value::Integer(i)) => i,
-        None => 1, // pre-release player_list did not have config version. pre-release config is compatible with version 1, so assume it is version 1
-        _ => return Err(Some("Database version not supported".to_string())),
-    };
-
-    match version {
-        1 => parse_version_1_config(),
-        _ => return Err(Some("Database version not supported".to_string())),
-    }
-
-    let display_window = match config.remove(OPENED_WINDOW) {
-        Some(Value::Boolean(b)) => b,
-        _ => false,
-    };
-    let inactive_color = match config.remove(INACTIVE_COLOR) {
-        Some(Value::Array(mut arr)) => {
-            if arr.len() == 4 {
-                let a = arr.remove(3);
-                let b = arr.remove(2);
-                let g = arr.remove(1);
-                let r = arr.remove(0);
-                if let (Value::Float(r), Value::Float(g), Value::Float(b), Value::Float(a)) = (r,g,b,a) {
-                    [r as f32,g as f32,b as f32,a as f32]
-                } else {
-                    DEFAULT_INACTIVE_COLOR
-                }
-            } else {
-                DEFAULT_INACTIVE_COLOR
-            }
-        },
-        _ => DEFAULT_INACTIVE_COLOR,
-    };
-    let auto_check_update = match config.remove(AUTO_CHECK_UPDATE) {
-        Some(Value::Boolean(b)) => b,
-        _ => DEFAULT_AUTO_CHECK_UPDATE,
-    };
-    let auto_check_beta = match config.remove(AUTO_CHECK_BETA) {
-        Some(Value::Boolean(b)) => b,
-        _ => DEFAULT_AUTO_CHECK_BETA,
-    };
-    let comment_size = match config.remove(COMMENT_SIZE) {
-        Some(Value::Array(mut arr)) => {
-            if arr.len() == 2 {
-                let h = arr.remove(1);
-                let w = arr.remove(0);
-                if let (Value::Float(w), Value::Float(h)) = (w, h) {
-                    [w as f32,h as f32]
-                } else {
-                    DEFAULT_COMMENT_SIZE
-                }
-            } else {
-                DEFAULT_COMMENT_SIZE
-            }
-        },
-        _ => DEFAULT_COMMENT_SIZE,
-    };
-    let show_all = match config.remove(SHOW_ALL) {
-        Some(Value::Boolean(b)) => b,
-        _ => false,
-    };
-
-    let shortcut_char = match config.remove(SHORTCUT) {
-        Some(Value::String(s)) => { // For compatibility with 0.1.2
-            if s.len() == 1 {
-                let c = s.chars()
-                    .next()
-                    .filter(|c| ('A'..='Z').contains(c));
-                match c {
-                    Some(c) => match c {
-                        'A' => Some(VirtualKey::A),
-                        'B' => Some(VirtualKey::B),
-                        'C' => Some(VirtualKey::C),
-                        'D' => Some(VirtualKey::D),
-                        'E' => Some(VirtualKey::E),
-                        'F' => Some(VirtualKey::F),
-                        'G' => Some(VirtualKey::G),
-                        'H' => Some(VirtualKey::H),
-                        'I' => Some(VirtualKey::I),
-                        'J' => Some(VirtualKey::J),
-                        'K' => Some(VirtualKey::K),
-                        'L' => Some(VirtualKey::L),
-                        'M' => Some(VirtualKey::M),
-                        'N' => Some(VirtualKey::N),
-                        'O' => Some(VirtualKey::O),
-                        'P' => Some(VirtualKey::P),
-                        'Q' => Some(VirtualKey::Q),
-                        'R' => Some(VirtualKey::R),
-                        'S' => Some(VirtualKey::S),
-                        'T' => Some(VirtualKey::T),
-                        'U' => Some(VirtualKey::U),
-                        'V' => Some(VirtualKey::V),
-                        'W' => Some(VirtualKey::W),
-                        'X' => Some(VirtualKey::X),
-                        'Y' => Some(VirtualKey::Y),
-                        'Z' => Some(VirtualKey::Z),
-                        _ => None
-                    },
-                    None => None,
-                }
-            } else {
-                None
-            }
-        },
-        Some(Value::Integer(i)) => {
-            Some(VirtualKey(i as i32))
-        }
-        _ => None
-    };
-
-    let mut state = get_state();
-    state.players = player_list;
-    state.flags.display_window = display_window;
-    state.flags.show_all = show_all;
-    state.inactive_color = inactive_color;
-    state.comment_size = comment_size;
-    state.shortcut_char = shortcut_char;
-    state.auto_check_update = auto_check_update;
-    state.auto_check_beta = auto_check_beta;
+    config::parse(&mut get_state())?;
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
-    if !state.flags.extras_initialized {
-        extras_initializer(state, Some("abcdtest"));
+    {
+        let state = get_state();
+        if !state.flags.extras_initialized {
+            extras_initializer(state, Some("abcdtest"));
+        }
     }
 
     Ok(())
-}
-
-fn parse_version_1_config() {
-    //todo!()
 }
 
 fn extras_initializer(mut state: MutexGuard<'_, State>, self_name: Option<&str>) {
@@ -394,78 +235,11 @@ fn init_extras(_: ExtrasAddonInfo, self_name: Option<&str>) {
     extras_initializer(state, self_name);
 }
 
-fn init_player_list(config: &mut Map<String, Value>) -> PlayerVecMap {
-    let players = config.remove(PLAYERS);
-
-    let players = match players {
-        Some(Value::Array(players)) => players,
-        _ => vec![],
-    };
-
-    let mut player_map = HashMap::new();
-
-    let player_list: Vec<_> = players.into_iter()
-        .filter_map(|val| {
-            let mut properties = match val {
-                Value::Table(properties) => properties,
-                _ => return None
-            };
-
-            let name = properties.remove("name");
-            let comment = properties.remove("comment");
-
-            if let (Some(Value::String(name)), Some(Value::String(comment))) = (name, comment) {
-                Some(Player {
-                    lowercase_name: name.to_lowercase(),
-                    name,
-                    lowercase_comment: comment.to_lowercase(),
-                    comment,
-                    in_squad: false,
-                })
-            } else {
-                None
-            }
-        }).collect();
-
-    for (i, player) in player_list.iter().enumerate() {
-        player_map.insert(player.name.clone(), i);
-    }
-
-    PlayerVecMap {
-        player_list,
-        name_dict: player_map,
-    }
-}
-
 fn release() {
-    let mut config = Map::new();
-
-    let state = get_state();
-    let player_list = state.players.player_list.iter().filter_map(|player| {
-        if player.comment != "" {
-            Some(player.to_toml())
-        } else {
-            None
-        }
-    }).collect();
-    config.insert(PLAYERS.to_string(), Value::Array(player_list));
-    config.insert(OPENED_WINDOW.to_string(), Value::Boolean(state.flags.display_window));
-    let inactive_color = state.inactive_color.into_iter()
-        .map(|val| Value::Float(val as f64)).collect();
-    config.insert(INACTIVE_COLOR.to_string(), Value::Array(inactive_color));
-    let comment_size = state.comment_size.into_iter()
-        .map(|val| Value::Float(val as f64)).collect();
-    config.insert(COMMENT_SIZE.to_string(), Value::Array(comment_size));
-    config.insert(SHOW_ALL.to_string(), Value::Boolean(state.flags.show_all));
-    if let Some(i) = state.shortcut_char {
-        config.insert(SHORTCUT.to_string(), Value::Integer(i.0 as i64));
-    }
-    config.insert(AUTO_CHECK_UPDATE.to_string(), Value::Boolean(state.auto_check_update));
-    config.insert(AUTO_CHECK_BETA.to_string(), Value::Boolean(state.auto_check_beta));
-    config.insert(CONFIG_VERSION.to_string(), Value::Integer(CURRENT_CONFIG_VERSION));
-
-    let toml_string = toml::to_string(&Value::Table(config)).unwrap();
-    std::fs::write(CONFIG_PATH, toml_string).unwrap()
+    let mut state = get_state();
+    if let Err(_) = config::save(&mut state) {
+        log("Failed to save!")
+    };
 }
 
 fn get_state<'a>() -> MutexGuard<'a, State>{
@@ -686,9 +460,14 @@ fn options_tab(ui: &Ui) {
     ui.checkbox("Allow beta releases", &mut state.auto_check_beta);
 }
 
+// log only does something in debug builds
 fn log(msg: &str) {
+    let _ = msg;
     #[cfg(debug_assertions)]
-    writeln!(File::options().create(true).append(true).open(TMP_PATH).unwrap(), "{msg}").unwrap();
+    {
+        use std::io::Write;
+        writeln!(std::fs::File::options().create(true).append(true).open(config::TMP_PATH).unwrap(), "{msg}").unwrap();
+    }
 }
 
 fn shortcuts(key: usize, key_down: bool, holding_key: bool) -> bool {
