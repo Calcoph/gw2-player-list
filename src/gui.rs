@@ -1,8 +1,127 @@
-use arcdps::imgui::Ui;
+use arcdps::imgui::{InputTextFlags, TableColumnSetup, Ui};
 use const_format::formatcp;
 use windows::System::VirtualKey;
 
-use crate::{State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH};
+use crate::{Action, State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH};
+
+pub fn main_window(ui: &Ui, state: &mut State) {
+    if !state.flags.extras_initialized {
+        ui.window("Player List Error").collapsible(false).build(|| {
+            ui.text("Unofficial extras extension required")
+        });
+
+        return
+    };
+
+    let mut opened_window = state.flags.display_window;
+    if opened_window {
+        ui.window("Player List").opened(&mut opened_window).collapsible(false).build(|| main_window_impl(ui, state));
+    }
+
+    state.flags.display_window = opened_window;
+}
+
+fn main_window_impl(ui: &Ui, state: &mut State) {
+    let column_data = [
+        // max character length of account name = 32 characters
+        TableColumnSetup {
+            name: "name",
+            ..Default::default()
+        },
+        TableColumnSetup {
+            name: "comment",
+            ..Default::default()
+        }
+    ];
+    {
+        ui.checkbox("Show all", &mut state.flags.show_all);
+
+        ui.separator();
+        ui.text("Add user:");
+        ui.input_text("##add_user", &mut state.add_user_text).build();
+        ui.same_line();
+        if ui.button("Add") {
+            if !state.add_user_text.is_empty() {
+                state.players.add_player(&state.add_user_text, "Comment here".to_string());
+                state.add_user_text = "".to_string();
+            }
+        };
+
+        ui.separator();
+        ui.text("Filters:");
+        if ui.input_text("##user_filter", &mut state.filters.user_filter_str).build() {
+            state.filters.user_filter_str = state.filters.user_filter_str.to_lowercase()
+        };
+        if ui.is_item_hovered() {
+            ui.tooltip_text("Filter by user name")
+        }
+        if ui.input_text("##comment_filter", &mut state.filters.comment_filter_str).build() {
+            state.filters.comment_filter_str = state.filters.comment_filter_str.to_lowercase()
+        };
+        if ui.is_item_hovered() {
+            ui.tooltip_text("Filter by comment")
+        }
+    }
+    let mut action = None;
+    if let Some(table) = ui.begin_table_header("PLayerListTable", column_data) {
+        let filters = &state.filters;
+        let players = &mut state.players;
+        for (i, player) in players.player_list.iter_mut().enumerate() {
+            if !filters.user_filter_str.is_empty() && !player.lowercase_name.contains(&filters.user_filter_str) {
+                continue;
+            }
+            if !filters.comment_filter_str.is_empty() && !player.lowercase_comment.contains(&filters.comment_filter_str) {
+                continue;
+            }
+            if !state.flags.show_all && !player.in_squad {
+                continue;
+            }
+            ui.table_next_column();
+            if ui.button(format!("X##delete_{i}")) {
+                action = Some(Action::DeletePlayer(player.name.clone()))
+            }
+            if ui.is_item_hovered() {
+                ui.tooltip_text("Delete this player\nfrom the list")
+            }
+            ui.same_line();
+            if player.in_squad {
+                text(ui, &mut player.name);
+            } else {
+                text_colored(ui, state.config.inactive_color, &mut player.name);
+            }
+
+            ui.table_next_column();
+            if ui.input_text_multiline(format!("##{i}"), &mut player.comment, state.config.comment_size).build() {
+                player.lowercase_comment = player.comment.to_lowercase()
+            };
+        }
+        table.end()
+    };
+
+    if let Some(action) = action {
+        match action {
+            Action::DeletePlayer(username) => state.players.delete(&username),
+        }
+    }
+}
+
+fn text(ui: &Ui, txt: &mut String) {
+    let tok = ui.push_style_color(arcdps::imgui::StyleColor::FrameBg, [0.0,0.0,0.0,0.0]);
+    ui.input_text(format!("##selectable_text{txt}"), txt)
+        .flags(InputTextFlags::READ_ONLY)
+        .build();
+    tok.end();
+}
+
+fn text_colored(ui: &Ui, color: [f32;4], txt: &mut String) {
+    let tok = ui.push_style_color(arcdps::imgui::StyleColor::Text, color);
+    let tok2 = ui.push_style_color(arcdps::imgui::StyleColor::FrameBg, [0.0,0.0,0.0,0.0]);
+    ui.input_text(format!("##selectable_text{txt}"), txt)
+        .flags(InputTextFlags::READ_ONLY)
+        .build();
+    tok2.end();
+    tok.end();
+}
 
 pub fn arcdps_options(ui: &Ui, state: &mut State) {
     ui.checkbox("player list", &mut state.flags.display_window);

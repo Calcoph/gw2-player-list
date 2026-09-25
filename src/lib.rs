@@ -3,8 +3,8 @@ const VERSION_MAJOR: u32 = 1;
 const VERSION_MINOR: u32 = 0;
 const VERSION_PATCH: u32 = 0;
 
-use std::{collections::HashMap, ops::DerefMut, sync::{Mutex, MutexGuard}};
-use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{InputTextFlags, TableColumnSetup, Ui}};
+use std::{collections::HashMap, sync::{Mutex, MutexGuard}};
+use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{Ui}};
 use const_format::formatcp;
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
@@ -280,131 +280,13 @@ fn add_user(username: &str) {
 }
 
 fn draw_window(ui: &Ui, not_character_or_loading: bool) {
-    let state = get_state();
+    let mut state = get_state();
     if !not_character_or_loading {
         // Don't draw anything on character screen or loading screen
         return
     }
 
-    if !state.flags.extras_initialized {
-        ui.window("Player List Error").collapsible(false).build(|| {
-            ui.text("Unofficial extras extension required")
-        });
-
-        return
-    };
-
-    let mut opened_window = state.flags.display_window;
-    std::mem::drop(state); // liberates the mutex so get_state() can be called again from the closure in .build()
-    if opened_window {
-        ui.window("Player List").opened(&mut opened_window).collapsible(false).build(|| {
-            let column_data = [
-                // max character length of account name = 32 characters
-                TableColumnSetup {
-                    name: "name",
-                    ..Default::default()
-                },
-                TableColumnSetup {
-                    name: "comment",
-                    ..Default::default()
-                }
-            ];
-            {
-                let mut state = get_state();
-                let state = state.deref_mut();
-                ui.checkbox("Show all", &mut state.flags.show_all);
-
-                ui.separator();
-                ui.text("Add user:");
-                ui.input_text("##add_user", &mut state.add_user_text).build();
-                ui.same_line();
-                if ui.button("Add") {
-                    if !state.add_user_text.is_empty() {
-                        state.players.add_player(&state.add_user_text, "Comment here".to_string());
-                        state.add_user_text = "".to_string();
-                    }
-                };
-
-                ui.separator();
-                ui.text("Filters:");
-                if ui.input_text("##user_filter", &mut state.filters.user_filter_str).build() {
-                    state.filters.user_filter_str = state.filters.user_filter_str.to_lowercase()
-                };
-                if ui.is_item_hovered() {
-                    ui.tooltip_text("Filter by user name")
-                }
-                if ui.input_text("##comment_filter", &mut state.filters.comment_filter_str).build() {
-                    state.filters.comment_filter_str = state.filters.comment_filter_str.to_lowercase()
-                };
-                if ui.is_item_hovered() {
-                    ui.tooltip_text("Filter by comment")
-                }
-            }
-            let mut action = None;
-            if let Some(table) = ui.begin_table_header("PLayerListTable", column_data) {
-                let mut state = get_state();
-                let state = state.deref_mut();
-                let filters = &state.filters;
-                let players = &mut state.players;
-                for (i, player) in players.player_list.iter_mut().enumerate() {
-                    if !filters.user_filter_str.is_empty() && !player.lowercase_name.contains(&filters.user_filter_str) {
-                        continue;
-                    }
-                    if !filters.comment_filter_str.is_empty() && !player.lowercase_comment.contains(&filters.comment_filter_str) {
-                        continue;
-                    }
-                    if !state.flags.show_all && !player.in_squad {
-                        continue;
-                    }
-                    ui.table_next_column();
-                    if ui.button(format!("X##delete_{i}")) {
-                        action = Some(Action::DeletePlayer(player.name.clone()))
-                    }
-                    if ui.is_item_hovered() {
-                        ui.tooltip_text("Delete this player\nfrom the list")
-                    }
-                    ui.same_line();
-                    if player.in_squad {
-                        text(ui, &mut player.name);
-                    } else {
-                        text_colored(ui, state.config.inactive_color, &mut player.name);
-                    }
-
-                    ui.table_next_column();
-                    if ui.input_text_multiline(format!("##{i}"), &mut player.comment, state.config.comment_size).build() {
-                        player.lowercase_comment = player.comment.to_lowercase()
-                    };
-                }
-                table.end()
-            };
-
-            if let Some(action) = action {
-                match action {
-                    Action::DeletePlayer(username) => get_state().players.delete(&username),
-                }
-            }
-        });
-    }
-
-    get_state().flags.display_window = opened_window;
-}
-
-fn text(ui: &Ui, txt: &mut String) {
-    let tok = ui.push_style_color(arcdps::imgui::StyleColor::FrameBg, [0.0,0.0,0.0,0.0]);
-    ui.input_text(format!("##selectable_text{txt}"), txt)
-        .flags(InputTextFlags::READ_ONLY)
-        .build();
-    tok.end();
-}
-
-fn text_colored(ui: &Ui, color: [f32;4], txt: &mut String) {
-    let tok = ui.push_style_color(arcdps::imgui::StyleColor::Text, color);
-    let tok2 = ui.push_style_color(arcdps::imgui::StyleColor::FrameBg, [0.0,0.0,0.0,0.0]);
-    ui.input_text(format!("##selectable_text{txt}"), txt)
-        .flags(InputTextFlags::READ_ONLY)
-        .build();
-    tok2.end();
-    tok.end();
+    gui::main_window(ui, &mut state)
 }
 
 enum Action {
