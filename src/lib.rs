@@ -1,8 +1,7 @@
 #![allow(static_mut_refs)]
-
-const VERSION_MAJOR: u32 = 0;
-const VERSION_MINOR: u32 = 3;
-const VERSION_PATCH: u32 = 1;
+const VERSION_MAJOR: u32 = 1;
+const VERSION_MINOR: u32 = 0;
+const VERSION_PATCH: u32 = 0;
 
 use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
 use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{InputTextFlags, TableColumnSetup, Ui}};

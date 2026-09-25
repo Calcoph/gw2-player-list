@@ -935,7 +935,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "player-list"
-version = "0.3.1"
+version = "1.0.0"
 dependencies = [
  "arcdps",
  "const_format",
