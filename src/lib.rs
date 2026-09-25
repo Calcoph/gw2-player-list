@@ -679,7 +679,8 @@ fn options_tab(ui: &Ui) {
         }
     }
 
-    ui.text("Auto updates");
+    ui.text("Automatic update configuration");
+    ui.text(formatcp!("{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"));
     ui.separator();
     ui.checkbox("Enable", &mut state.auto_check_update);
     ui.checkbox("Allow beta releases", &mut state.auto_check_beta);
@@ -764,9 +765,14 @@ fn check_for_updates() -> Option<String> {
         .user_agent(USER_AGENT)
         .build().ok()?;
 
-    let body = http_client.get(URL) // TODO: Do not spam the api, do not check for updates every time gw2 is launched. Maybe once a week or so.
-        .send().ok()?
-        .text().ok()?;
+    let response = http_client.get(URL).send().ok()?; // TODO: Do not spam the api, do not check for updates every time gw2 is launched. Maybe once a week or so. Also use etags https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2026-03-10#make-requests-that-can-be-cached
+
+    let status = response.status();
+    let body = response.text().ok()?;
+    if !status.is_success() {
+        log(&format!("Update error ({}) response body: {body}", status.as_u16()));
+        return None;
+    }
 
     let ret: serde_json::Value = serde_json::from_str(&body).ok()?;
     let serde_json::Value::Array(releases) = ret else {
@@ -820,6 +826,9 @@ fn check_for_updates() -> Option<String> {
         }
     }
 
+    if chosen_release.is_none() {
+        log("No new version has been detected");
+    }
     chosen_release
 }
 
