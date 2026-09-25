@@ -1,7 +1,7 @@
 use toml::{Value, map::Map};
 use windows::System::VirtualKey;
 
-use crate::{State, config::{AUTO_CHECK_BETA, AUTO_CHECK_UPDATE, COMMENT_SIZE, DEFAULT_AUTO_CHECK_BETA, DEFAULT_AUTO_CHECK_UPDATE, DEFAULT_COMMENT_SIZE, DEFAULT_INACTIVE_COLOR, INACTIVE_COLOR, OPENED_WINDOW, SHORTCUT, SHOW_ALL, init_player_list}};
+use crate::{State, config::{AUTO_CHECK_BETA, AUTO_CHECK_UPDATE, COMMENT_SIZE, Config, DEFAULT_AUTO_CHECK_BETA, DEFAULT_AUTO_CHECK_UPDATE, DEFAULT_COMMENT_SIZE, DEFAULT_INACTIVE_COLOR, DEFAULT_SHORTCUT_CHAR, INACTIVE_COLOR, OPENED_WINDOW, SHORTCUT, SHOW_ALL, init_player_list}};
 
 pub fn parse_config(state: &mut State, mut config: Map<String, Value>) {
     let player_list = init_player_list(&mut config);
@@ -90,26 +90,28 @@ pub fn parse_config(state: &mut State, mut config: Map<String, Value>) {
                         'X' => Some(VirtualKey::X),
                         'Y' => Some(VirtualKey::Y),
                         'Z' => Some(VirtualKey::Z),
-                        _ => None
+                        _ => DEFAULT_SHORTCUT_CHAR
                     },
                     None => None,
                 }
             } else {
-                None
+                DEFAULT_SHORTCUT_CHAR
             }
         },
         Some(Value::Integer(i)) => {
             Some(VirtualKey(i as i32))
         }
-        _ => None
+        _ => DEFAULT_SHORTCUT_CHAR
     };
 
     state.players = player_list;
     state.flags.display_window = display_window;
     state.flags.show_all = show_all;
-    state.inactive_color = inactive_color;
-    state.comment_size = comment_size;
-    state.shortcut_char = shortcut_char;
-    state.auto_check_update = auto_check_update;
-    state.auto_check_beta = auto_check_beta;
+    state.config = Config {
+        inactive_color,
+        comment_size,
+        shortcut_char,
+        auto_check_update,
+        auto_check_beta,
+    }
 }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use toml::{Value, map::Map};
+use windows::System::VirtualKey;
 
 use crate::{Filters, Flags, Player, PlayerVecMap, State};
 
@@ -21,6 +22,7 @@ const AUTO_CHECK_BETA: &'static str = "AutoCheckBeta";
 const CONFIG_VERSION: &'static str = "ConfigVersion";
 const DEFAULT_INACTIVE_COLOR: [f32;4] = [0.5,0.5,0.5,1.0];
 const DEFAULT_COMMENT_SIZE: [f32;2] = [300.0, 20.0];
+const DEFAULT_SHORTCUT_CHAR: Option<VirtualKey> = None;
 const DEFAULT_AUTO_CHECK_UPDATE: bool = true;
 const DEFAULT_AUTO_CHECK_BETA: bool = false;
 const SHORTCUT: &'static str = "ShortcutKey";
@@ -60,18 +62,18 @@ pub fn save(state: &mut State) -> Result<(), String> {
     }).collect();
     config.insert(PLAYERS.to_string(), Value::Array(player_list));
     config.insert(OPENED_WINDOW.to_string(), Value::Boolean(state.flags.display_window));
-    let inactive_color = state.inactive_color.into_iter()
+    let inactive_color = state.config.inactive_color.into_iter()
         .map(|val| Value::Float(val as f64)).collect();
     config.insert(INACTIVE_COLOR.to_string(), Value::Array(inactive_color));
-    let comment_size = state.comment_size.into_iter()
+    let comment_size = state.config.comment_size.into_iter()
         .map(|val| Value::Float(val as f64)).collect();
     config.insert(COMMENT_SIZE.to_string(), Value::Array(comment_size));
     config.insert(SHOW_ALL.to_string(), Value::Boolean(state.flags.show_all));
-    if let Some(i) = state.shortcut_char {
+    if let Some(i) = state.config.shortcut_char {
         config.insert(SHORTCUT.to_string(), Value::Integer(i.0 as i64));
     }
-    config.insert(AUTO_CHECK_UPDATE.to_string(), Value::Boolean(state.auto_check_update));
-    config.insert(AUTO_CHECK_BETA.to_string(), Value::Boolean(state.auto_check_beta));
+    config.insert(AUTO_CHECK_UPDATE.to_string(), Value::Boolean(state.config.auto_check_update));
+    config.insert(AUTO_CHECK_BETA.to_string(), Value::Boolean(state.config.auto_check_beta));
     config.insert(CONFIG_VERSION.to_string(), Value::Integer(CURRENT_CONFIG_VERSION));
 
     let Ok(toml_string) = toml::to_string(&Value::Table(config)) else {
@@ -133,12 +135,21 @@ pub fn default_state() -> State {
         self_name: "".to_string(),
         flags: Flags::new(),
         filters: Filters::new(),
-        inactive_color: DEFAULT_INACTIVE_COLOR,
-        comment_size: DEFAULT_COMMENT_SIZE,
         add_user_text: "".to_string(),
-        shortcut_char: None,
-        listening_to_key: false,
-        auto_check_update: DEFAULT_AUTO_CHECK_UPDATE,
-        auto_check_beta: DEFAULT_AUTO_CHECK_BETA,
+        config: Config {
+            inactive_color: DEFAULT_INACTIVE_COLOR,
+            comment_size: DEFAULT_COMMENT_SIZE,
+            shortcut_char: DEFAULT_SHORTCUT_CHAR,
+            auto_check_update: DEFAULT_AUTO_CHECK_UPDATE,
+            auto_check_beta: DEFAULT_AUTO_CHECK_BETA,
+        }
     }
+}
+
+pub struct Config {
+    pub inactive_color: [f32;4],
+    pub comment_size: [f32;2],
+    pub shortcut_char: Option<VirtualKey>,
+    pub auto_check_update: bool,
+    pub auto_check_beta: bool,
 }

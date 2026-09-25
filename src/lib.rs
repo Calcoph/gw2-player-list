@@ -10,6 +10,8 @@ use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 use windows::System::VirtualKey;
 
+use crate::config::Config;
+
 mod config;
 
 arcdps::export! {
@@ -173,6 +175,7 @@ struct Flags {
     extras_initialized: bool,
     display_window: bool,
     show_all: bool,
+    listening_to_key: bool,
 }
 
 impl Flags {
@@ -180,7 +183,8 @@ impl Flags {
         Flags {
             extras_initialized: false,
             display_window: false,
-            show_all: false
+            show_all: false,
+            listening_to_key: false,
         }
     }
 }
@@ -190,13 +194,8 @@ struct State {
     self_name: String,
     flags: Flags,
     filters: Filters,
-    inactive_color: [f32;4],
-    comment_size: [f32;2],
     add_user_text: String,
-    shortcut_char: Option<VirtualKey>,
-    listening_to_key: bool,
-    auto_check_update: bool,
-    auto_check_beta: bool,
+    config: Config,
 }
 
 static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(config::default_state()));
@@ -367,11 +366,11 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
                     if player.in_squad {
                         text(ui, &mut player.name);
                     } else {
-                        text_colored(ui, state.inactive_color, &mut player.name);
+                        text_colored(ui, state.config.inactive_color, &mut player.name);
                     }
 
                     ui.table_next_column();
-                    if ui.input_text_multiline(format!("##{i}"), &mut player.comment, state.comment_size).build() {
+                    if ui.input_text_multiline(format!("##{i}"), &mut player.comment, state.config.comment_size).build() {
                         player.lowercase_comment = player.comment.to_lowercase()
                     };
                 }
@@ -421,43 +420,43 @@ fn options(ui: &Ui, window_name: Option<&str>) -> bool {
 
 fn options_tab(ui: &Ui) {
     let mut state = get_state();
-    ui.color_edit4("Inactive player", &mut state.inactive_color);
+    ui.color_edit4("Inactive player", &mut state.config.inactive_color);
     if ui.is_item_hovered() {
         ui.tooltip_text("Color of the names of players out of the squad")
     }
 
-    ui.input_float2("Comment Size", &mut state.comment_size).build();
+    ui.input_float2("Comment Size", &mut state.config.comment_size).build();
 
-    match state.shortcut_char {
+    match state.config.shortcut_char {
         Some(c) => ui.text(format!("Shortcut: {}", vk_to_text(c))),
         None => ui.text("No shortcut set"),
     }
 
     ui.same_line();
     if ui.button("X") {
-        state.shortcut_char = None
+        state.config.shortcut_char = None
     }
 
-    if state.listening_to_key {
+    if state.flags.listening_to_key {
         ui.same_line();
         ui.text("Listening ... ");
         ui.same_line();
         if ui.button("Cancel") {
-            state.listening_to_key = false;
-            state.shortcut_char = None
+            state.flags.listening_to_key = false;
+            state.config.shortcut_char = None
         }
     } else {
         ui.same_line();
         if ui.button("Set shortcut") {
-            state.listening_to_key = true
+            state.flags.listening_to_key = true
         }
     }
 
     ui.text("Automatic update configuration");
     ui.text(formatcp!("{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"));
     ui.separator();
-    ui.checkbox("Enable", &mut state.auto_check_update);
-    ui.checkbox("Allow beta releases", &mut state.auto_check_beta);
+    ui.checkbox("Enable", &mut state.config.auto_check_update);
+    ui.checkbox("Allow beta releases", &mut state.config.auto_check_beta);
 }
 
 // log only does something in debug builds
@@ -475,7 +474,7 @@ fn shortcuts(key: usize, key_down: bool, holding_key: bool) -> bool {
     if key_down && !holding_key {
         // Both modifier keys have been pressed
         // modifiers are alt+shift by default
-        if let Some(c) = state.shortcut_char {
+        if let Some(c) = state.config.shortcut_char {
             if key == c.0 as usize {
                 state.flags.display_window = !state.flags.display_window;
                 return false
@@ -488,9 +487,9 @@ fn shortcuts(key: usize, key_down: bool, holding_key: bool) -> bool {
 
 fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
     let mut state = get_state();
-    if key_down && !holding_key && state.listening_to_key {
-        state.listening_to_key = false;
-        state.shortcut_char = Some(VirtualKey(key as i32));
+    if key_down && !holding_key && state.flags.listening_to_key {
+        state.flags.listening_to_key = false;
+        state.config.shortcut_char = Some(VirtualKey(key as i32));
         return false
     }
 
@@ -536,7 +535,7 @@ fn check_for_updates() -> Option<String> {
     const USER_AGENT: &'static str = formatcp!("gw2_player_list_{VERSION_MAJOR}_{VERSION_MINOR}_{VERSION_PATCH}");
 
     let state = get_state();
-    if !state.auto_check_update {
+    if !state.config.auto_check_update {
         return None;
     }
 
@@ -564,7 +563,7 @@ fn check_for_updates() -> Option<String> {
             continue;
         };
 
-        if !state.auto_check_beta {
+        if !state.config.auto_check_beta {
             if let Some(serde_json::Value::Bool(true)) = release.get("prerelease") {
                 continue;
             }
