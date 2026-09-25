@@ -1,5 +1,9 @@
 #![allow(static_mut_refs)]
 
+const VERSION_MAJOR: u32 = 0;
+const VERSION_MINOR: u32 = 3;
+const VERSION_PATCH: u32 = 1;
+
 use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
 use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{InputTextFlags, TableColumnSetup, Ui}};
 use once_cell::sync::Lazy;
@@ -18,6 +22,7 @@ arcdps::export! {
     options_end: options_tab,
     wnd_filter: shortcuts,
     wnd_nofilter: nofilter,
+    update_url: check_for_updates
 }
 
 struct Player {
@@ -188,6 +193,8 @@ struct State {
     add_user_text: String,
     shortcut_char: Option<VirtualKey>,
     listening_to_key: bool,
+    auto_check_update: bool,
+    auto_check_beta: bool,
 }
 
 impl State {
@@ -201,7 +208,9 @@ impl State {
             comment_size: DEFAULT_COMMENT_SIZE,
             add_user_text: "".to_string(),
             shortcut_char: None,
-            listening_to_key: false
+            listening_to_key: false,
+            auto_check_update: DEFAULT_AUTO_CHECK_UPDATE,
+            auto_check_beta: DEFAULT_AUTO_CHECK_BETA,
         }
     }
 }
@@ -209,14 +218,20 @@ impl State {
 static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::new()));
 const CONFIG_PATH: &'static str = "addons/arcdps/player_list.toml";
 const TMP_PATH: &'static str = "addons/arcdps/player_list.tmp";
+const CURRENT_CONFIG_VERSION: i64 = 1;
 
 const PLAYERS: &'static str = "Players";
 const OPENED_WINDOW: &'static str = "WindowOpen";
 const INACTIVE_COLOR: &'static str = "InactiveColor";
 const SHOW_ALL: &'static str = "ShowAll";
 const COMMENT_SIZE: &'static str = "CommentSize";
+const AUTO_CHECK_UPDATE: &'static str = "AutoCheckUpdate";
+const AUTO_CHECK_BETA: &'static str = "AutoCheckBeta";
+const CONFIG_VERSION: &'static str = "ConfigVersion";
 const DEFAULT_INACTIVE_COLOR: [f32;4] = [0.5,0.5,0.5,1.0];
 const DEFAULT_COMMENT_SIZE: [f32;2] = [300.0, 20.0];
+const DEFAULT_AUTO_CHECK_UPDATE: bool = true;
+const DEFAULT_AUTO_CHECK_BETA: bool = false;
 const SHORTCUT: &'static str = "ShortcutKey";
 
 fn init() -> Result<(), Option<String>> {
@@ -230,6 +245,17 @@ fn init() -> Result<(), Option<String>> {
         };
 
     let player_list = init_player_list(&mut config);
+    let version = match config.remove(CONFIG_VERSION) {
+        Some(Value::Integer(i)) => i,
+        None => 1, // pre-release player_list did not have config version. pre-release config is compatible with version 1, so assume it is version 1
+        _ => return Err(Some("Database version not supported".to_string())),
+    };
+
+    match version {
+        1 => parse_version_1_config(),
+        _ => return Err(Some("Database version not supported".to_string())),
+    }
+
     let display_window = match config.remove(OPENED_WINDOW) {
         Some(Value::Boolean(b)) => b,
         _ => false,
@@ -251,6 +277,14 @@ fn init() -> Result<(), Option<String>> {
             }
         },
         _ => DEFAULT_INACTIVE_COLOR,
+    };
+    let auto_check_update = match config.remove(AUTO_CHECK_UPDATE) {
+        Some(Value::Boolean(b)) => b,
+        _ => DEFAULT_AUTO_CHECK_UPDATE,
+    };
+    let auto_check_beta = match config.remove(AUTO_CHECK_BETA) {
+        Some(Value::Boolean(b)) => b,
+        _ => DEFAULT_AUTO_CHECK_BETA,
     };
     let comment_size = match config.remove(COMMENT_SIZE) {
         Some(Value::Array(mut arr)) => {
@@ -328,11 +362,17 @@ fn init() -> Result<(), Option<String>> {
     state.inactive_color = inactive_color;
     state.comment_size = comment_size;
     state.shortcut_char = shortcut_char;
+    state.auto_check_update = auto_check_update;
+    state.auto_check_beta = auto_check_beta;
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
     extras_initializer(state, Some("abcdtest"));
 
     Ok(())
+}
+
+fn parse_version_1_config() {
+    todo!()
 }
 
 fn extras_initializer(mut state: MutexGuard<'_, State>, self_name: Option<&str>) {
@@ -413,6 +453,9 @@ fn release() {
     if let Some(i) = state.shortcut_char {
         config.insert(SHORTCUT.to_string(), Value::Integer(i.0 as i64));
     }
+    config.insert(AUTO_CHECK_UPDATE.to_string(), Value::Boolean(state.auto_check_update));
+    config.insert(AUTO_CHECK_BETA.to_string(), Value::Boolean(state.auto_check_beta));
+    config.insert(CONFIG_VERSION.to_string(), Value::Integer(CURRENT_CONFIG_VERSION));
 
     let toml_string = toml::to_string(&Value::Table(config)).unwrap();
     std::fs::write(CONFIG_PATH, toml_string).unwrap()
@@ -628,6 +671,11 @@ fn options_tab(ui: &Ui) {
             state.listening_to_key = true
         }
     }
+
+    ui.text("Auto updates");
+    ui.separator();
+    ui.checkbox("Enable", &mut state.auto_check_update);
+    ui.checkbox("Allow beta releases", &mut state.auto_check_beta);
 }
 
 fn log(msg: &str) {
@@ -691,4 +739,105 @@ fn vk_to_text(vk: VirtualKey) -> String {
         VirtualKey::Z => "Z".to_string(),
         VirtualKey(key) => format!("Key<{key}>")
     }
+}
+
+fn check_for_updates() -> Option<String> {
+    let state = get_state();
+    if !state.auto_check_update {
+        return None;
+    }
+
+    let url = concat!("https://api.github.com/repos/Calcoph/gw2-player-list/releases?per_page=",
+        "5", // check at most the most recent 5 updates
+        "&page=1"
+    );
+    let body = reqwest::blocking::get(url)
+        .ok()?
+        .text().ok()?;
+
+    let ret: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let serde_json::Value::Array(releases) = ret else {
+        return None;
+    };
+
+    let mut chosen_release = None;
+    for release in releases {
+        let serde_json::Value::Object(release) = release else {
+            continue;
+        };
+
+        if !state.auto_check_beta {
+            if let Some(serde_json::Value::Bool(true)) = release.get("prerelease") {
+                continue;
+            }
+        }
+
+        let Some(serde_json::Value::Array(assets)) = release.get("assets") else {
+            continue;
+        };
+
+        let Some(serde_json::Value::String(tag)) = release.get("tag_name") else {
+            continue;
+        };
+
+        let Some(version) = parse_tag(tag) else {
+            continue;
+        };
+
+        if !is_version_newer(version) {
+            continue;
+        }
+
+        for asset in assets {
+            let Some(serde_json::Value::String(name)) = asset.get("name") else {
+                continue;
+            };
+
+            if name != "player_list.dll" {
+                continue;
+            }
+
+            let Some(serde_json::Value::String(url)) = asset.get("url") else {
+                continue;
+            };
+
+            chosen_release = Some(url.clone());
+            break;
+        }
+    }
+
+    chosen_release
+}
+
+fn is_version_newer((major, minor, patch): (u32, u32, u32)) -> bool {
+    if major < VERSION_MAJOR {
+        return false;
+    }
+
+    if minor < VERSION_MINOR {
+        return false;
+    }
+
+    return patch > VERSION_PATCH;
+}
+
+fn parse_tag(tag: &str) -> Option<(u32, u32, u32)> {
+    if !tag.starts_with("v") {
+        return None;
+    }
+
+    tag.trim_start_matches("v");
+
+    let mut parts = tag.split(".");
+    let major = parts.next()?;
+    let minor = parts.next()?;
+    let patch = parts.next()?;
+
+    let patch = patch.split("-").next()?;
+
+    let major = major.parse().ok()?;
+    let minor = minor.parse().ok()?;
+    let patch = patch.parse().ok()?;
+
+    Some((major, minor, patch))
 }
