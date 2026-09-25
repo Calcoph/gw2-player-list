@@ -21,13 +21,13 @@ const AUTO_CHECK_UPDATE: &'static str = "AutoCheckUpdate";
 const AUTO_CHECK_BETA: &'static str = "AutoCheckBeta";
 const CONFIG_VERSION: &'static str = "ConfigVersion";
 const UPDATER_DATA: &'static str = "UpdaterData";
+const SHORTCUT: &'static str = "ShortcutKey";
 const DEFAULT_INACTIVE_COLOR: [f32;4] = [0.5,0.5,0.5,1.0];
 const DEFAULT_COMMENT_SIZE: [f32;2] = [300.0, 20.0];
 const DEFAULT_SHORTCUT_CHAR: Option<VirtualKey> = None;
 const DEFAULT_AUTO_CHECK_UPDATE: bool = true;
 const DEFAULT_AUTO_CHECK_BETA: bool = false;
-const DEFAULT_DAYS_BETWEEN_POLLS: u64 = 30;
-const SHORTCUT: &'static str = "ShortcutKey";
+const DEFAULT_DAYS_BETWEEN_POLLS: i32 = 30;
 
 pub fn parse(state: &mut State) -> Result<(), Option<String>> {
     let toml_string = std::fs::read_to_string(CONFIG_PATH).unwrap_or_default();
@@ -223,7 +223,7 @@ const AVAILABLE_VERSION: &'static str = "AvailableVersion";
 
 pub struct UpdaterData {
     pub last_update_timestamp: u64,
-    pub days_between_polls: u64,
+    pub days_between_polls: i32,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub available_version: Option<AvailableVersion>, // TODO: Do something with this
@@ -262,10 +262,13 @@ impl UpdaterData {
            Some(Value::Integer(i)) => i as u64,
            _ => 0,
         };
-        let days_between_polls = match updater_data.remove(DAYS_BETWEEN_POLLS) {
-            Some(Value::Integer(i)) => i as u64,
+        let mut days_between_polls = match updater_data.remove(DAYS_BETWEEN_POLLS) {
+            Some(Value::Integer(i)) => i as i32,
             _ => DEFAULT_DAYS_BETWEEN_POLLS,
         };
+        if days_between_polls < 0 {
+            days_between_polls = 0;
+        }
         let etag = match updater_data.remove(ETAG) {
             Some(Value::String(s)) => Some(s),
             _ => None,

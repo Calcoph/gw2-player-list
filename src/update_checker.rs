@@ -17,7 +17,7 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
     let now = UNIX_EPOCH.elapsed().unwrap_or(Duration::from_secs(0));
     let last_update = Duration::from_secs(state.updater_data.last_update_timestamp);
     let since_last_update = now - last_update;
-    if since_last_update.as_secs() < state.updater_data.days_between_polls * 3600 * 24 {
+    if since_last_update.as_secs() < state.updater_data.days_between_polls as u64 * 3600 * 24 {
         log("not updating since last update was not long ago enough");
         return None;
     }

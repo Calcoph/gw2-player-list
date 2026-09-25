@@ -176,6 +176,13 @@ pub fn options(ui: &Ui, state: &mut State) {
     ui.separator();
     ui.checkbox("Enable", &mut state.config.auto_check_update);
     ui.checkbox("Allow beta releases", &mut state.config.auto_check_beta);
+    if ui.input_int("Check for updates every", &mut state.updater_data.days_between_polls).build() {
+        if state.updater_data.days_between_polls < 0 {
+            state.updater_data.days_between_polls = 0;
+        }
+    }
+    ui.same_line();
+    ui.text("days");
     if ui.button("Check for updates on next login") {
         state.updater_data.reset()
     }
