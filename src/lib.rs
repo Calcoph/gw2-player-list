@@ -6,6 +6,7 @@ const VERSION_PATCH: u32 = 1;
 
 use std::{collections::HashMap, fs::File, io::Write, ops::DerefMut, sync::{Mutex, MutexGuard}};
 use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{InputTextFlags, TableColumnSetup, Ui}};
+use const_format::formatcp;
 use once_cell::sync::Lazy;
 use toml::{map::Map, Value};
 use windows::System::VirtualKey;
@@ -366,19 +367,26 @@ fn init() -> Result<(), Option<String>> {
     state.auto_check_beta = auto_check_beta;
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
-    extras_initializer(state, Some("abcdtest"));
+    if !state.flags.extras_initialized {
+        extras_initializer(state, Some("abcdtest"));
+    }
 
     Ok(())
 }
 
 fn parse_version_1_config() {
-    todo!()
+    //todo!()
 }
 
 fn extras_initializer(mut state: MutexGuard<'_, State>, self_name: Option<&str>) {
     if let Some(self_name) = self_name {
         state.flags.extras_initialized = true;
         state.self_name = self_name.to_owned();
+    } else {
+        #[cfg(debug_assertions)]
+        {
+            state.flags.extras_initialized = false;
+        }
     }
 }
 
@@ -679,6 +687,7 @@ fn options_tab(ui: &Ui) {
 }
 
 fn log(msg: &str) {
+    #[cfg(debug_assertions)]
     writeln!(File::options().create(true).append(true).open(TMP_PATH).unwrap(), "{msg}").unwrap();
 }
 
@@ -742,17 +751,22 @@ fn vk_to_text(vk: VirtualKey) -> String {
 }
 
 fn check_for_updates() -> Option<String> {
+    const RELEASE_LIST_LEN: u32 = 5; // check at most the most recent RELEASE_LIST_LEN updates
+    const URL: &'static str = formatcp!("https://api.github.com/repos/Calcoph/gw2-player-list/releases?per_page={RELEASE_LIST_LEN}&page=1");
+
+    const USER_AGENT: &'static str = formatcp!("gw2_player_list_{VERSION_MAJOR}_{VERSION_MINOR}_{VERSION_PATCH}");
+
     let state = get_state();
     if !state.auto_check_update {
         return None;
     }
 
-    let url = concat!("https://api.github.com/repos/Calcoph/gw2-player-list/releases?per_page=",
-        "5", // check at most the most recent 5 updates
-        "&page=1"
-    );
-    let body = reqwest::blocking::get(url)
-        .ok()?
+    let http_client = reqwest::blocking::ClientBuilder::new()
+        .user_agent(USER_AGENT)
+        .build().ok()?;
+
+    let body = http_client.get(URL) // TODO: Do not spam the api, do not check for updates every time gw2 is launched. Maybe once a week or so.
+        .send().ok()?
         .text().ok()?;
 
     let ret: serde_json::Value = serde_json::from_str(&body).ok()?;
@@ -761,7 +775,7 @@ fn check_for_updates() -> Option<String> {
     };
 
     let mut chosen_release = None;
-    for release in releases {
+    'outer: for release in releases {
         let serde_json::Value::Object(release) = release else {
             continue;
         };
@@ -797,12 +811,13 @@ fn check_for_updates() -> Option<String> {
                 continue;
             }
 
-            let Some(serde_json::Value::String(url)) = asset.get("url") else {
+            let Some(serde_json::Value::String(url)) = asset.get("browser_download_url") else {
                 continue;
             };
 
+            log(&format!("Updating version to {}.{}.{}", version.0, version.1, version.2));
             chosen_release = Some(url.clone());
-            break;
+            break 'outer;
         }
     }
 
@@ -810,10 +825,16 @@ fn check_for_updates() -> Option<String> {
 }
 
 fn is_version_newer((major, minor, patch): (u32, u32, u32)) -> bool {
+    if major > VERSION_MAJOR {
+        return true;
+    }
     if major < VERSION_MAJOR {
         return false;
     }
 
+    if minor > VERSION_MINOR {
+        return true;
+    }
     if minor < VERSION_MINOR {
         return false;
     }
@@ -826,7 +847,7 @@ fn parse_tag(tag: &str) -> Option<(u32, u32, u32)> {
         return None;
     }
 
-    tag.trim_start_matches("v");
+    let tag = tag.trim_start_matches("v");
 
     let mut parts = tag.split(".");
     let major = parts.next()?;
