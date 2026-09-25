@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use toml::{Value, map::Map};
 use windows::System::VirtualKey;
 
-use crate::{Filters, Flags, Player, PlayerVecMap, State};
+use crate::{Filters, Flags, PlayerVecMap, State, player_vec_map::Player};
 
 pub mod v1;
 
