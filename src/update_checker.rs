@@ -14,6 +14,14 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
         return None;
     }
 
+    let now = UNIX_EPOCH.elapsed().unwrap_or(Duration::from_secs(0));
+    let last_update = Duration::from_secs(state.updater_data.last_update_timestamp);
+    let since_last_update = now - last_update;
+    if since_last_update.as_secs() < state.updater_data.days_between_polls * 3600 * 24 {
+        log("not updating since last update was not long ago enough");
+        return None;
+    }
+
     let http_client = reqwest::blocking::ClientBuilder::new()
         .user_agent(USER_AGENT)
         .build().ok()?;
@@ -38,7 +46,8 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
     let etag = headers.remove("etag");
     let body = response.text().ok()?;
     if status.as_u16() == 304 { // Not Modified
-        // TODO
+        log("not updating since nothing changed");
+        return None;
     } else if !status.is_success() {
         log(&format!("Update error ({}) response body: {body}", status.as_u16()));
         return None;
@@ -55,15 +64,25 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
             state.updater_data.etag = Some(etag.to_owned())
         }
     }
-    state.updater_data.last_update_timestamp = UNIX_EPOCH.elapsed().unwrap_or(Duration::from_secs(0)).as_secs();
+    state.updater_data.last_update_timestamp = now.as_secs();
 
     let ret: serde_json::Value = serde_json::from_str(&body).ok()?;
     let serde_json::Value::Array(releases) = ret else {
         return None;
     };
 
-    let mut chosen_release = None;
-    'outer: for release in releases {
+    let chosen_release = choose_release(state, releases);
+
+    if let Some(version) = &chosen_release {
+        state.updater_data.available_version = Some(version.clone())
+    } else {
+        log("No new version has been detected");
+    }
+    chosen_release.map(|version| version.url) // TODO: Let user decide to update or not. Do not do it automatically
+}
+
+fn choose_release(state: &State, releases: Vec<serde_json::Value>) -> Option<AvailableVersion> {
+    for release in releases {
         let serde_json::Value::Object(release) = release else {
             continue;
         };
@@ -104,23 +123,16 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
             };
 
             log(&format!("Updating version to {}.{}.{}", version.0, version.1, version.2));
-            chosen_release = Some(AvailableVersion {
+            return Some(AvailableVersion {
                 major: version.0,
                 minor: version.1,
                 patch: version.2,
                 url: url.clone(),
             });
-            break 'outer;
         }
     }
 
-    if chosen_release.is_none() {
-        log("No new version has been detected");
-    }
-    if let Some(version) = &chosen_release {
-        state.updater_data.available_version = Some(version.clone())
-    }
-    chosen_release.map(|version| version.url)
+    None
 }
 
 fn is_version_newer((major, minor, patch): (u32, u32, u32)) -> bool {
