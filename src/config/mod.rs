@@ -174,6 +174,7 @@ const MINOR: &'static str = "Minor";
 const PATCH: &'static str = "Patch";
 const URL: &'static str = "Url";
 
+#[derive(Debug, Clone)]
 pub struct AvailableVersion {
     pub major: u32,
     pub minor: u32,

@@ -1,6 +1,8 @@
+use std::time::{Duration, UNIX_EPOCH};
+
 use const_format::formatcp;
 
-use crate::{State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, log};
+use crate::{State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, config::AvailableVersion, log};
 
 pub fn check_for_updates(state: &mut State) -> Option<String> {
     const RELEASE_LIST_LEN: u32 = 5; // check at most the most recent RELEASE_LIST_LEN updates
@@ -16,14 +18,44 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
         .user_agent(USER_AGENT)
         .build().ok()?;
 
-    let response = http_client.get(URL).send().ok()?; // TODO: Do not spam the api, do not check for updates every time gw2 is launched. Maybe once a week or so. Also use etags https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2026-03-10#make-requests-that-can-be-cached
+    let request = http_client.get(URL);
+    let request = if let Some(last_modified) = &state.updater_data.last_modified {
+        request.header("if-modified-since", last_modified)
+    } else {
+        request
+    };
+    let request = if let Some(etag) = &state.updater_data.etag {
+        request.header("if-none-match", etag)
+    } else {
+        request
+    };
+
+    let mut response = request.send().ok()?;
 
     let status = response.status();
+    let headers = response.headers_mut();
+    let last_modified = headers.remove("last-modified");
+    let etag = headers.remove("etag");
     let body = response.text().ok()?;
-    if !status.is_success() {
+    if status.as_u16() == 304 { // Not Modified
+        // TODO
+    } else if !status.is_success() {
         log(&format!("Update error ({}) response body: {body}", status.as_u16()));
         return None;
     }
+
+    if let Some(last_modified) = last_modified {
+        if let Ok(last_modified) = last_modified.to_str() {
+            state.updater_data.last_modified = Some(last_modified.to_owned())
+        }
+    }
+
+    if let Some(etag) = etag {
+        if let Ok(etag) = etag.to_str() {
+            state.updater_data.etag = Some(etag.to_owned())
+        }
+    }
+    state.updater_data.last_update_timestamp = UNIX_EPOCH.elapsed().unwrap_or(Duration::from_secs(0)).as_secs();
 
     let ret: serde_json::Value = serde_json::from_str(&body).ok()?;
     let serde_json::Value::Array(releases) = ret else {
@@ -72,7 +104,12 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
             };
 
             log(&format!("Updating version to {}.{}.{}", version.0, version.1, version.2));
-            chosen_release = Some(url.clone());
+            chosen_release = Some(AvailableVersion {
+                major: version.0,
+                minor: version.1,
+                patch: version.2,
+                url: url.clone(),
+            });
             break 'outer;
         }
     }
@@ -80,7 +117,10 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
     if chosen_release.is_none() {
         log("No new version has been detected");
     }
-    chosen_release
+    if let Some(version) = &chosen_release {
+        state.updater_data.available_version = Some(version.clone())
+    }
+    chosen_release.map(|version| version.url)
 }
 
 fn is_version_newer((major, minor, patch): (u32, u32, u32)) -> bool {
