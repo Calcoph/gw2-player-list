@@ -13,6 +13,7 @@ use windows::System::VirtualKey;
 use crate::config::Config;
 
 mod config;
+mod gui;
 
 arcdps::export! {
     name: "Player List",
@@ -22,8 +23,8 @@ arcdps::export! {
     release,
     imgui: draw_window,
     extras_squad_update: squad_update,
-    options_windows: options,
-    options_end: options_tab,
+    options_windows: arcdps_options_hook,
+    options_end: addon_options,
     wnd_filter: shortcuts,
     wnd_nofilter: nofilter,
     update_url: check_for_updates
@@ -410,53 +411,19 @@ enum Action {
     DeletePlayer(String)
 }
 
-fn options(ui: &Ui, window_name: Option<&str>) -> bool {
+fn arcdps_options_hook(ui: &Ui, window_name: Option<&str>) -> bool {
+    let mut state = get_state();
+
     if let Some("error") = window_name {
-        ui.checkbox("player list", &mut get_state().flags.display_window);
+        gui::arcdps_options(ui, &mut state)
     }
 
     false
 }
 
-fn options_tab(ui: &Ui) {
+fn addon_options(ui: &Ui) {
     let mut state = get_state();
-    ui.color_edit4("Inactive player", &mut state.config.inactive_color);
-    if ui.is_item_hovered() {
-        ui.tooltip_text("Color of the names of players out of the squad")
-    }
-
-    ui.input_float2("Comment Size", &mut state.config.comment_size).build();
-
-    match state.config.shortcut_char {
-        Some(c) => ui.text(format!("Shortcut: {}", vk_to_text(c))),
-        None => ui.text("No shortcut set"),
-    }
-
-    ui.same_line();
-    if ui.button("X") {
-        state.config.shortcut_char = None
-    }
-
-    if state.flags.listening_to_key {
-        ui.same_line();
-        ui.text("Listening ... ");
-        ui.same_line();
-        if ui.button("Cancel") {
-            state.flags.listening_to_key = false;
-            state.config.shortcut_char = None
-        }
-    } else {
-        ui.same_line();
-        if ui.button("Set shortcut") {
-            state.flags.listening_to_key = true
-        }
-    }
-
-    ui.text("Automatic update configuration");
-    ui.text(formatcp!("{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"));
-    ui.separator();
-    ui.checkbox("Enable", &mut state.config.auto_check_update);
-    ui.checkbox("Allow beta releases", &mut state.config.auto_check_beta);
+    gui::options(ui, &mut state);
 }
 
 // log only does something in debug builds
@@ -494,38 +461,6 @@ fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
     }
 
     true
-}
-
-fn vk_to_text(vk: VirtualKey) -> String {
-    match vk {
-        VirtualKey::A => "A".to_string(),
-        VirtualKey::B => "B".to_string(),
-        VirtualKey::C => "C".to_string(),
-        VirtualKey::D => "D".to_string(),
-        VirtualKey::E => "E".to_string(),
-        VirtualKey::F => "F".to_string(),
-        VirtualKey::G => "G".to_string(),
-        VirtualKey::H => "H".to_string(),
-        VirtualKey::I => "I".to_string(),
-        VirtualKey::J => "J".to_string(),
-        VirtualKey::K => "K".to_string(),
-        VirtualKey::L => "L".to_string(),
-        VirtualKey::M => "M".to_string(),
-        VirtualKey::N => "N".to_string(),
-        VirtualKey::O => "O".to_string(),
-        VirtualKey::P => "P".to_string(),
-        VirtualKey::Q => "Q".to_string(),
-        VirtualKey::R => "R".to_string(),
-        VirtualKey::S => "S".to_string(),
-        VirtualKey::T => "T".to_string(),
-        VirtualKey::U => "U".to_string(),
-        VirtualKey::V => "V".to_string(),
-        VirtualKey::W => "W".to_string(),
-        VirtualKey::X => "X".to_string(),
-        VirtualKey::Y => "Y".to_string(),
-        VirtualKey::Z => "Z".to_string(),
-        VirtualKey(key) => format!("Key<{key}>")
-    }
 }
 
 fn check_for_updates() -> Option<String> {
