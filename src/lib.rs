@@ -347,10 +347,10 @@ fn draw_window(ui: &Ui, not_character_or_loading: bool) {
                 let filters = &state.filters;
                 let players = &mut state.players;
                 for (i, player) in players.player_list.iter_mut().enumerate() {
-                    if !filters.user_filter_str.is_empty() && !player.lowercase_name.starts_with(&filters.user_filter_str) {
+                    if !filters.user_filter_str.is_empty() && !player.lowercase_name.contains(&filters.user_filter_str) {
                         continue;
                     }
-                    if !filters.comment_filter_str.is_empty() && !player.lowercase_comment.starts_with(&filters.comment_filter_str) {
+                    if !filters.comment_filter_str.is_empty() && !player.lowercase_comment.contains(&filters.comment_filter_str) {
                         continue;
                     }
                     if !state.flags.show_all && !player.in_squad {
