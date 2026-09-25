@@ -8,7 +8,7 @@ use arcdps::{extras::{ExtrasAddonInfo, UserInfoIter}, imgui::{Ui}};
 use once_cell::sync::Lazy;
 use windows::System::VirtualKey;
 
-use crate::{config::Config, player_vec_map::PlayerVecMap};
+use crate::{config::{Config, UpdaterData}, player_vec_map::PlayerVecMap};
 
 mod config;
 mod gui;
@@ -49,6 +49,7 @@ struct Flags {
     display_window: bool,
     show_all: bool,
     listening_to_key: bool,
+    config_correctly_parsed: bool,
 }
 
 impl Flags {
@@ -58,6 +59,7 @@ impl Flags {
             display_window: false,
             show_all: false,
             listening_to_key: false,
+            config_correctly_parsed: false,
         }
     }
 }
@@ -69,6 +71,7 @@ struct State {
     filters: Filters,
     add_user_text: String,
     config: Config,
+    updater_data: UpdaterData,
 }
 
 static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(config::default_state()));
@@ -77,11 +80,12 @@ static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(config::default_s
 fn init() -> Result<(), Option<String>> {
     // May return an error to indicate load failure
 
-    config::parse(&mut get_state())?;
+    let mut state = get_state();
+    config::parse(&mut state)?;
+    state.flags.config_correctly_parsed = true;
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
     {
-        let state = get_state();
         if !state.flags.extras_initialized {
             extras_initializer(state, Some("abcdtest"));
         }
@@ -109,9 +113,11 @@ fn init_extras(_: ExtrasAddonInfo, self_name: Option<&str>) {
 
 fn release() {
     let mut state = get_state();
-    if let Err(_) = config::save(&mut state) {
-        log("Failed to save!")
-    };
+    if state.flags.config_correctly_parsed { // Only save if we actually read the config file, in order to not overwrite data
+        if let Err(_) = config::save(&mut state) {
+            log("Failed to save!")
+        };
+    }
 }
 
 fn get_state<'a>() -> MutexGuard<'a, State>{

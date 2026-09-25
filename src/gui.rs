@@ -9,7 +9,13 @@ pub fn main_window(ui: &Ui, state: &mut State) {
         ui.window("Player List Error").collapsible(false).build(|| {
             ui.text("Unofficial extras extension required")
         });
+        return
+    };
 
+    if !state.flags.config_correctly_parsed {
+        ui.window("Player List Error").collapsible(false).build(|| {
+            ui.text("Could not read configuration file")
+        });
         return
     };
 
@@ -128,6 +134,11 @@ pub fn arcdps_options(ui: &Ui, state: &mut State) {
 }
 
 pub fn options(ui: &Ui, state: &mut State) {
+    if !state.flags.config_correctly_parsed {
+        ui.text("Could not read configuration file");
+        return
+    };
+
     ui.color_edit4("Inactive player", &mut state.config.inactive_color);
     if ui.is_item_hovered() {
         ui.tooltip_text("Color of the names of players out of the squad")

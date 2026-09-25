@@ -1,10 +1,10 @@
 use toml::{Value, map::Map};
 use windows::System::VirtualKey;
 
-use crate::{State, config::{AUTO_CHECK_BETA, AUTO_CHECK_UPDATE, COMMENT_SIZE, Config, DEFAULT_AUTO_CHECK_BETA, DEFAULT_AUTO_CHECK_UPDATE, DEFAULT_COMMENT_SIZE, DEFAULT_INACTIVE_COLOR, DEFAULT_SHORTCUT_CHAR, INACTIVE_COLOR, OPENED_WINDOW, SHORTCUT, SHOW_ALL, init_player_list}};
+use crate::{State, config::{AUTO_CHECK_BETA, AUTO_CHECK_UPDATE, COMMENT_SIZE, Config, DEFAULT_AUTO_CHECK_BETA, DEFAULT_AUTO_CHECK_UPDATE, DEFAULT_COMMENT_SIZE, DEFAULT_INACTIVE_COLOR, DEFAULT_SHORTCUT_CHAR, INACTIVE_COLOR, OPENED_WINDOW, SHORTCUT, SHOW_ALL, UPDATER_DATA, UpdaterData, init_player_list}};
 
-pub fn parse_config(state: &mut State, mut config: Map<String, Value>) {
-    let player_list = init_player_list(&mut config);
+pub fn parse_config(state: &mut State, mut config: Map<String, Value>) -> Result<(), String> {
+    let player_list = init_player_list(&mut config)?;
     let display_window = match config.remove(OPENED_WINDOW) {
         Some(Value::Boolean(b)) => b,
         _ => false,
@@ -104,6 +104,12 @@ pub fn parse_config(state: &mut State, mut config: Map<String, Value>) {
         _ => DEFAULT_SHORTCUT_CHAR
     };
 
+    let updater_data = match config.remove(UPDATER_DATA) {
+        Some(Value::Table(updater_data)) => UpdaterData::v1_parse(updater_data),
+        None => UpdaterData::new(),
+        _ => UpdaterData::new(),
+    };
+
     state.players = player_list;
     state.flags.display_window = display_window;
     state.flags.show_all = show_all;
@@ -113,5 +119,8 @@ pub fn parse_config(state: &mut State, mut config: Map<String, Value>) {
         shortcut_char,
         auto_check_update,
         auto_check_beta,
-    }
+    };
+    state.updater_data = updater_data;
+
+    Ok(())
 }
