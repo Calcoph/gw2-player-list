@@ -287,4 +287,10 @@ impl UpdaterData {
             available_version,
         }
     }
+
+    pub fn reset(&mut self) {
+        let available_version = self.available_version.take();
+        *self = UpdaterData::new();
+        self.available_version = available_version;
+    }
 }

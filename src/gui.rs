@@ -176,6 +176,9 @@ pub fn options(ui: &Ui, state: &mut State) {
     ui.separator();
     ui.checkbox("Enable", &mut state.config.auto_check_update);
     ui.checkbox("Allow beta releases", &mut state.config.auto_check_beta);
+    if ui.button("Check for updates on next login") {
+        state.updater_data.reset()
+    }
 }
 
 fn vk_to_text(vk: VirtualKey) -> String {
