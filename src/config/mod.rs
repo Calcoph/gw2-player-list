@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 use toml::{Value, map::Map};
 use windows::System::VirtualKey;
@@ -8,6 +8,7 @@ use crate::{Filters, Flags, PlayerVecMap, State, player_vec_map::Player};
 pub mod v1;
 
 const CONFIG_PATH: &'static str = "addons/arcdps/player_list.toml";
+const BACKUP_PATH: &'static str = "addons/arcdps/player_list.toml.autobu";
 #[cfg(debug_assertions)]
 pub const TMP_PATH: &'static str = "addons/arcdps/player_list.tmp";
 const CURRENT_CONFIG_VERSION: i64 = 1;
@@ -300,4 +301,8 @@ impl UpdaterData {
         *self = UpdaterData::new();
         self.available_version = available_version;
     }
+}
+
+pub(crate) fn backup_config_file() -> Result<(), std::io::Error> {
+    std::fs::copy(CONFIG_PATH, BACKUP_PATH).map(|_| ())
 }

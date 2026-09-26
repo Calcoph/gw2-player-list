@@ -255,6 +255,10 @@ fn automatic_update_checker() -> Option<String> {
     if ret.is_some() {
         // is going to be updated. Therefore neither init nor release will be called. So save data now or lose it
         save_state(&mut state);
+        if let Err(_) = config::backup_config_file() { // backup the just-saved data in case the next version fucks it up
+            // abort update if backup fails
+            return None
+        }
     }
     ret
 }
