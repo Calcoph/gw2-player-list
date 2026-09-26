@@ -1,6 +1,6 @@
 #![allow(static_mut_refs)]
-const VERSION_MAJOR: u32 = 1;
-const VERSION_MINOR: u32 = 0;
+const VERSION_MAJOR: u32 = 0;
+const VERSION_MINOR: u32 = 4;
 const VERSION_PATCH: u32 = 0;
 
 use std::sync::{Mutex, MutexGuard};
@@ -122,6 +122,7 @@ fn extras_initializer(mut state: MutexGuard<'_, State>, self_name: Option<&str>)
 }
 
 fn init_extras(_: ExtrasAddonInfo, self_name: Option<&str>) {
+    log("Extras initialized");
     let state = get_state();
     extras_initializer(state, self_name);
 }
@@ -249,7 +250,6 @@ fn automatic_update_checker() -> Option<String> {
     let mut state = get_state();
     read_config(&mut state).ok()?;
     let ret = update_checker::use_cached_version(&mut state);
-    update_checker::check_for_updates(&mut state);
 
     log(&format!("automatic_update_checker returned: {ret:?}"));
     if ret.is_some() {
@@ -259,6 +259,8 @@ fn automatic_update_checker() -> Option<String> {
             // abort update if backup fails
             return None
         }
+    } else {
+        update_checker::check_for_updates(&mut state);
     }
     ret
 }
