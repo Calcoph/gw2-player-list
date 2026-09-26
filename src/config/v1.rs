@@ -1,7 +1,7 @@
 use toml::{Value, map::Map};
 use windows::System::VirtualKey;
 
-use crate::{State, config::{AUTO_CHECK_BETA, AUTO_CHECK_UPDATE, COMMENT_SIZE, Config, DEFAULT_AUTO_CHECK_BETA, DEFAULT_AUTO_CHECK_UPDATE, DEFAULT_COMMENT_SIZE, DEFAULT_INACTIVE_COLOR, DEFAULT_SHORTCUT_CHAR, INACTIVE_COLOR, OPENED_WINDOW, SHORTCUT, SHOW_ALL, UPDATER_DATA, UpdaterData, init_player_list}};
+use crate::{State, config::{AUTO_CHECK_BETA, AUTO_CHECK_UPDATE, COMMENT_SIZE, Config, DEFAULT_AUTO_CHECK_BETA, DEFAULT_AUTO_CHECK_UPDATE, DEFAULT_COMMENT_SIZE, DEFAULT_INACTIVE_COLOR, DEFAULT_SHORTCUT_CHAR, INACTIVE_COLOR, OPENED_WINDOW, SHORTCUT, SHOW_ALL, UPDATE_PERMITTED, UPDATER_DATA, UpdaterData, init_player_list}};
 
 pub fn parse_config(state: &mut State, mut config: Map<String, Value>) -> Result<(), String> {
     let player_list = init_player_list(&mut config)?;
@@ -34,6 +34,10 @@ pub fn parse_config(state: &mut State, mut config: Map<String, Value>) -> Result
     let auto_check_beta = match config.remove(AUTO_CHECK_BETA) {
         Some(Value::Boolean(b)) => b,
         _ => DEFAULT_AUTO_CHECK_BETA,
+    };
+    let update_permitted = match config.remove(UPDATE_PERMITTED) {
+        Some(Value::Boolean(b)) => b,
+        _ => false,
     };
     let comment_size = match config.remove(COMMENT_SIZE) {
         Some(Value::Array(mut arr)) => {
@@ -119,6 +123,7 @@ pub fn parse_config(state: &mut State, mut config: Map<String, Value>) -> Result
         shortcut_char,
         auto_check_update,
         auto_check_beta,
+        update_permitted,
     };
     state.updater_data = updater_data;
 

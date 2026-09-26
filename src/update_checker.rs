@@ -4,14 +4,29 @@ use const_format::formatcp;
 
 use crate::{State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, config::AvailableVersion, log};
 
-pub fn check_for_updates(state: &mut State) -> Option<String> {
+pub fn use_cached_version(state: &mut State) -> Option<String> {
+    if !state.config.auto_check_update {
+        return None;
+    }
+
+    if !state.config.update_permitted {
+        return None;
+    }
+
+    let url = state.updater_data.available_version.take()?.url;
+    state.config.update_permitted = false;
+
+    Some(url)
+}
+
+pub fn check_for_updates(state: &mut State) {
     const RELEASE_LIST_LEN: u32 = 5; // check at most the most recent RELEASE_LIST_LEN updates
     const URL: &'static str = formatcp!("https://api.github.com/repos/Calcoph/gw2-player-list/releases?per_page={RELEASE_LIST_LEN}&page=1");
 
     const USER_AGENT: &'static str = formatcp!("gw2_player_list_{VERSION_MAJOR}_{VERSION_MINOR}_{VERSION_PATCH}");
 
     if !state.config.auto_check_update {
-        return None;
+        return;
     }
 
     let now = UNIX_EPOCH.elapsed().unwrap_or(Duration::from_secs(0));
@@ -19,12 +34,15 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
     let since_last_update = now - last_update;
     if since_last_update.as_secs() < state.updater_data.days_between_polls as u64 * 3600 * 24 {
         log("not updating since last update was not long ago enough");
-        return None;
+        return;
     }
 
-    let http_client = reqwest::blocking::ClientBuilder::new()
+    let Ok(http_client) = reqwest::blocking::ClientBuilder::new()
         .user_agent(USER_AGENT)
-        .build().ok()?;
+        .build()
+    else {
+        return;
+    };
 
     let request = http_client.get(URL);
     let request = if let Some(last_modified) = &state.updater_data.last_modified {
@@ -38,21 +56,25 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
         request
     };
 
-    let mut response = request.send().ok()?;
+    let Ok(mut response) = request.send() else {
+        return;
+    };
     log(&format!("updater response: {response:?}"));
 
     let status = response.status();
     let headers = response.headers_mut();
     let last_modified = headers.remove("last-modified");
     let etag = headers.remove("etag");
-    let body = response.text().ok()?;
+    let Ok(body) = response.text() else {
+        return;
+    };
     log(&format!("updater response body: {body:?}"));
     if status.as_u16() == 304 { // Not Modified
         log("not updating since nothing changed");
-        return None;
+        return;
     } else if !status.is_success() {
         log(&format!("Update error ({}) response body: {body}", status.as_u16()));
-        return None;
+        return;
     }
 
     if let Some(last_modified) = last_modified {
@@ -68,19 +90,21 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
     }
     state.updater_data.last_update_timestamp = now.as_secs();
 
-    let ret: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let Ok(ret): Result<serde_json::Value, _> = serde_json::from_str(&body) else {
+        return;
+    };
     let serde_json::Value::Array(releases) = ret else {
-        return None;
+        return;
     };
 
     let chosen_release = choose_release(state, releases);
 
     if let Some(version) = &chosen_release {
+        log("New version available");
         state.updater_data.available_version = Some(version.clone())
     } else {
         log("No new version has been detected");
     }
-    chosen_release.map(|version| version.url) // TODO: Let user decide to update or not. Do not do it automatically
 }
 
 fn choose_release(state: &State, releases: Vec<serde_json::Value>) -> Option<AvailableVersion> {

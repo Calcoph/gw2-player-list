@@ -83,6 +83,7 @@ fn init() -> Result<(), Option<String>> {
 
     let mut state = get_state();
     read_config(&mut state)?;
+    state.config.update_permitted = false; // If init is called, it means update was already called and did not update. Therefore the cached consent is no longer valid.
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
     {
@@ -125,8 +126,12 @@ fn init_extras(_: ExtrasAddonInfo, self_name: Option<&str>) {
 
 fn release() {
     let mut state = get_state();
+    save_state(&mut state);
+}
+
+fn save_state(state: &mut State) {
     if state.flags.config_correctly_parsed { // Only save if we actually read the config file, in order to not overwrite data
-        if let Err(_) = config::save(&mut state) {
+        if let Err(_) = config::save(state) {
             log("Failed to save!")
         };
         log("Saved")
@@ -241,7 +246,13 @@ fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
 fn automatic_update_checker() -> Option<String> {
     let mut state = get_state();
     read_config(&mut state).ok()?;
-    let ret = update_checker::check_for_updates(&mut state);
+    let ret = update_checker::use_cached_version(&mut state);
+    update_checker::check_for_updates(&mut state);
+
     log(&format!("automatic_update_checker returned: {ret:?}"));
+    if ret.is_some() {
+        // is going to be updated. Therefore neither init nor release will be called. So save data now or lose it
+        save_state(&mut state);
+    }
     ret
 }
