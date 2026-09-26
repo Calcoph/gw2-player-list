@@ -18,6 +18,8 @@ Save other players' account names and add comments to them, instead of blocking/
 1. delete \<Path to "Guild Wars 2">\addons\arcdps\player_list.dll
 2. delete \<Path to "Guild Wars 2">\addons\arcdps\player_list.toml
 3. delete \<Path to "Guild Wars 2">\addons\arcdps\player_list.tmp (if it exists)
+4. delete \<Path to "Guild Wars 2">\addons\arcdps\player_list.dll.old (if it exists)
+5. delete \<Path to "Guild Wars 2">\addons\arcdps\player_list.dll.old2 (if it exists)
 
 
 ## Compilation
