@@ -39,12 +39,14 @@ pub fn check_for_updates(state: &mut State) -> Option<String> {
     };
 
     let mut response = request.send().ok()?;
+    log(&format!("updater response: {response:?}"));
 
     let status = response.status();
     let headers = response.headers_mut();
     let last_modified = headers.remove("last-modified");
     let etag = headers.remove("etag");
     let body = response.text().ok()?;
+    log(&format!("updater response body: {body:?}"));
     if status.as_u16() == 304 { // Not Modified
         log("not updating since nothing changed");
         return None;

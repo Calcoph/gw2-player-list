@@ -77,12 +77,12 @@ struct State {
 static mut STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(config::default_state()));
 
 
+// automatic_update_checker may be called before init() is called. Be careful
 fn init() -> Result<(), Option<String>> {
     // May return an error to indicate load failure
 
     let mut state = get_state();
-    config::parse(&mut state)?;
-    state.flags.config_correctly_parsed = true;
+    read_config(&mut state)?;
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
     {
@@ -90,6 +90,18 @@ fn init() -> Result<(), Option<String>> {
             extras_initializer(state, Some("abcdtest"));
         }
     }
+
+    log("Initialized");
+    Ok(())
+}
+
+fn read_config(state: &mut State) -> Result<(), Option<String>> {
+    if state.flags.config_correctly_parsed {
+        return Ok(())
+    }
+
+    config::parse(state)?;
+    state.flags.config_correctly_parsed = true;
 
     Ok(())
 }
@@ -117,6 +129,9 @@ fn release() {
         if let Err(_) = config::save(&mut state) {
             log("Failed to save!")
         };
+        log("Saved")
+    } else {
+        log("Not saving config since could not correctly parse in the first place")
     }
 }
 
@@ -225,5 +240,8 @@ fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
 
 fn automatic_update_checker() -> Option<String> {
     let mut state = get_state();
-    update_checker::check_for_updates(&mut state)
+    read_config(&mut state).ok()?;
+    let ret = update_checker::check_for_updates(&mut state);
+    log(&format!("automatic_update_checker returned: {ret:?}"));
+    ret
 }
