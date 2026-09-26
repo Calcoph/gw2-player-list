@@ -19,7 +19,36 @@ pub fn main_window(ui: &Ui, state: &mut State) {
         return
     };
 
+    if let Some(available_version) = state.updater_data.available_version.as_ref() {
+        if state.config.auto_check_update && !state.config.update_permitted && !state.flags.ignore_updater_window {
+            ui.window("Player List Updater").collapsible(false).build(|| {
+                ui.text("A new update for Player List is available");
+                ui.text("The update will be downloaded from:");
+                ui.indent();
+                ui.text(&available_version.url);
+                ui.unindent();
+                ui.text(formatcp!("Current version: {VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"));
+                ui.text(format!("Downloadable version: {}.{}.{}", available_version.major, available_version.minor, available_version.patch));
+                ui.text("Download on next login?");
+
+                if ui.button("Yes") {
+                    state.config.update_permitted = true;
+                }
+                ui.same_line();
+                if ui.button("Not now") {
+                    state.flags.ignore_updater_window = true;
+                }
+                ui.same_line();
+                if ui.button("Disable auto updates") {
+                    state.config.auto_check_update = false;
+                }
+            });
+            return; // Do not display main window until user makes a choice on thee update to not clutter the screen with windows
+        }
+    }
+
     let mut opened_window = state.flags.display_window;
+
     if opened_window {
         ui.window("Player List").opened(&mut opened_window).collapsible(false).build(|| main_window_impl(ui, state));
     }
@@ -39,35 +68,35 @@ fn main_window_impl(ui: &Ui, state: &mut State) {
             ..Default::default()
         }
     ];
-    {
-        ui.checkbox("Show all", &mut state.flags.show_all);
 
-        ui.separator();
-        ui.text("Add user:");
-        ui.input_text("##add_user", &mut state.add_user_text).build();
-        ui.same_line();
-        if ui.button("Add") {
-            if !state.add_user_text.is_empty() {
-                state.players.add_player(&state.add_user_text, "Comment here".to_string());
-                state.add_user_text = "".to_string();
-            }
-        };
+    ui.checkbox("Show all", &mut state.flags.show_all);
 
-        ui.separator();
-        ui.text("Filters:");
-        if ui.input_text("##user_filter", &mut state.filters.user_filter_str).build() {
-            state.filters.user_filter_str = state.filters.user_filter_str.to_lowercase()
-        };
-        if ui.is_item_hovered() {
-            ui.tooltip_text("Filter by user name")
+    ui.separator();
+    ui.text("Add user:");
+    ui.input_text("##add_user", &mut state.add_user_text).build();
+    ui.same_line();
+    if ui.button("Add") {
+        if !state.add_user_text.is_empty() {
+            state.players.add_player(&state.add_user_text, "Comment here".to_string());
+            state.add_user_text = "".to_string();
         }
-        if ui.input_text("##comment_filter", &mut state.filters.comment_filter_str).build() {
-            state.filters.comment_filter_str = state.filters.comment_filter_str.to_lowercase()
-        };
-        if ui.is_item_hovered() {
-            ui.tooltip_text("Filter by comment")
-        }
+    };
+
+    ui.separator();
+    ui.text("Filters:");
+    if ui.input_text("##user_filter", &mut state.filters.user_filter_str).build() {
+        state.filters.user_filter_str = state.filters.user_filter_str.to_lowercase()
+    };
+    if ui.is_item_hovered() {
+        ui.tooltip_text("Filter by user name")
     }
+    if ui.input_text("##comment_filter", &mut state.filters.comment_filter_str).build() {
+        state.filters.comment_filter_str = state.filters.comment_filter_str.to_lowercase()
+    };
+    if ui.is_item_hovered() {
+        ui.tooltip_text("Filter by comment")
+    }
+
     let mut action = None;
     if let Some(table) = ui.begin_table_header("PLayerListTable", column_data) {
         let filters = &state.filters;

@@ -47,6 +47,7 @@ impl Filters {
 struct Flags {
     extras_initialized: bool,
     display_window: bool,
+    ignore_updater_window: bool,
     show_all: bool,
     listening_to_key: bool,
     config_correctly_parsed: bool,
@@ -57,6 +58,7 @@ impl Flags {
         Flags {
             extras_initialized: false,
             display_window: false,
+            ignore_updater_window: false,
             show_all: false,
             listening_to_key: false,
             config_correctly_parsed: false,
