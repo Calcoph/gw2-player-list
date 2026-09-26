@@ -2,7 +2,7 @@ use arcdps::imgui::{InputTextFlags, TableColumnSetup, Ui};
 use const_format::formatcp;
 use windows::System::VirtualKey;
 
-use crate::{Action, State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH};
+use crate::{Action, State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, update_checker};
 
 pub fn main_window(ui: &Ui, state: &mut State) {
     if !state.flags.extras_initialized {
@@ -20,7 +20,8 @@ pub fn main_window(ui: &Ui, state: &mut State) {
     };
 
     if let Some(available_version) = state.updater_data.available_version.as_ref() {
-        if state.config.auto_check_update && !state.config.update_permitted && !state.flags.ignore_updater_window {
+        if state.config.auto_check_update && !state.flags.ignore_updater_window {
+            let mut update = false;
             ui.window("Player List Updater").collapsible(false).build(|| {
                 ui.text("A new update for Player List is available");
                 ui.text("The update will be downloaded from:");
@@ -32,7 +33,7 @@ pub fn main_window(ui: &Ui, state: &mut State) {
                 ui.text("Download on next login?");
 
                 if ui.button("Yes") {
-                    state.config.update_permitted = true;
+                    update = true;
                 }
                 ui.same_line();
                 if ui.button("Not now") {
@@ -43,6 +44,9 @@ pub fn main_window(ui: &Ui, state: &mut State) {
                     state.config.auto_check_update = false;
                 }
             });
+            if update {
+                update_checker::update(state);
+            }
             return; // Do not display main window until user makes a choice on thee update to not clutter the screen with windows
         }
     }

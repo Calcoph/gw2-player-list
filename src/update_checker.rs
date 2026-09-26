@@ -1,29 +1,20 @@
-use std::time::{Duration, UNIX_EPOCH};
+use std::{io::Write, time::{Duration, UNIX_EPOCH}};
 
 use const_format::formatcp;
 
-use crate::{State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, config::AvailableVersion, log};
+use crate::{State, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, config::{self, AvailableVersion}, log, save_state};
 
-pub fn use_cached_version(state: &mut State) -> Option<String> {
-    if !state.config.auto_check_update {
-        return None;
-    }
-
-    if !state.config.update_permitted {
-        return None;
-    }
-
-    let url = state.updater_data.available_version.take()?.url;
-    state.config.update_permitted = false;
-
-    Some(url)
+fn get_http_client() -> Option<reqwest::blocking::Client> {
+    const USER_AGENT: &'static str = formatcp!("gw2_player_list_{VERSION_MAJOR}_{VERSION_MINOR}_{VERSION_PATCH}");
+    reqwest::blocking::ClientBuilder::new()
+        .user_agent(USER_AGENT)
+        .build()
+        .ok()
 }
 
 pub fn check_for_updates(state: &mut State) {
     const RELEASE_LIST_LEN: u32 = 5; // check at most the most recent RELEASE_LIST_LEN updates
     const URL: &'static str = formatcp!("https://api.github.com/repos/Calcoph/gw2-player-list/releases?per_page={RELEASE_LIST_LEN}&page=1");
-
-    const USER_AGENT: &'static str = formatcp!("gw2_player_list_{VERSION_MAJOR}_{VERSION_MINOR}_{VERSION_PATCH}");
 
     if !state.config.auto_check_update {
         return;
@@ -37,10 +28,7 @@ pub fn check_for_updates(state: &mut State) {
         return;
     }
 
-    let Ok(http_client) = reqwest::blocking::ClientBuilder::new()
-        .user_agent(USER_AGENT)
-        .build()
-    else {
+    let Some(http_client) = get_http_client() else {
         return;
     };
 
@@ -199,4 +187,76 @@ fn parse_tag(tag: &str) -> Option<(u32, u32, u32)> {
     let patch = patch.parse().ok()?;
 
     Some((major, minor, patch))
+}
+
+pub fn update(state: &mut State) {
+    let Some(version) = state.updater_data.available_version.take() else {
+        return;
+    };
+
+    // backup the just-saved data in case the next version fucks it up
+    save_state(state);
+    if let Err(_) = config::backup_config_file() {
+        // abort update if backup fails
+        return
+    }
+
+    // Do in another thread to not block the UI
+    std::thread::spawn(|| update_impl(version));
+}
+
+const ADDON_PATH: &'static str = "addons/arcdps/player_list.dll";
+const OLD_ADDON_PATH: &'static str = "addons/arcdps/player_list.dll.old";
+const OLD_ADDON_PATH2: &'static str = "addons/arcdps/player_list.dll.old2";
+fn update_impl(version: AvailableVersion) {
+    let Some(http_client) = get_http_client() else {
+        return;
+    };
+
+    let Some(response) = http_client.get(version.url)
+        .send()
+        .ok()
+    else {
+        return;
+    };
+    if !response.status().is_success() {
+        return;
+    }
+    let Ok(response) = response.bytes() else {
+        return;
+    };
+
+    let Ok(mut new_file) = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(OLD_ADDON_PATH)
+    else {
+        return;
+    };
+
+    let Ok(_) = new_file.write_all(&response) else {
+        return;
+    };
+
+    // switch the names of the files
+    let Ok(_) = std::fs::rename(ADDON_PATH, OLD_ADDON_PATH2) else {
+        return;
+    };
+    let Ok(_) = std::fs::rename(OLD_ADDON_PATH, ADDON_PATH) else {
+        // Try to bring the current one back
+        let Ok(_) = std::fs::rename(OLD_ADDON_PATH2, ADDON_PATH) else {
+            return;
+        };
+        return;
+    };
+}
+
+pub fn after_update_cleanup() {
+    let Ok(_) = std::fs::remove_file(OLD_ADDON_PATH) else {
+        return;
+    };
+    let Ok(_) = std::fs::remove_file(OLD_ADDON_PATH2) else {
+        return;
+    };
 }

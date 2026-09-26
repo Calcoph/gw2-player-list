@@ -20,7 +20,6 @@ const SHOW_ALL: &'static str = "ShowAll";
 const COMMENT_SIZE: &'static str = "CommentSize";
 const AUTO_CHECK_UPDATE: &'static str = "AutoCheckUpdate";
 const AUTO_CHECK_BETA: &'static str = "AutoCheckBeta";
-const UPDATE_PERMITTED: &'static str = "UpdatePermitted";
 const CONFIG_VERSION: &'static str = "ConfigVersion";
 const UPDATER_DATA: &'static str = "UpdaterData";
 const SHORTCUT: &'static str = "ShortcutKey";
@@ -78,7 +77,6 @@ pub fn save(state: &mut State) -> Result<(), String> {
     }
     config.insert(AUTO_CHECK_UPDATE.to_string(), Value::Boolean(state.config.auto_check_update));
     config.insert(AUTO_CHECK_BETA.to_string(), Value::Boolean(state.config.auto_check_beta));
-    config.insert(UPDATE_PERMITTED.to_string(), Value::Boolean(state.config.update_permitted));
 
     config.insert(UPDATER_DATA.to_string(), state.updater_data.to_value());
 
@@ -159,7 +157,6 @@ pub fn default_state() -> State {
             shortcut_char: DEFAULT_SHORTCUT_CHAR,
             auto_check_update: DEFAULT_AUTO_CHECK_UPDATE,
             auto_check_beta: DEFAULT_AUTO_CHECK_BETA,
-            update_permitted: false,
         },
         updater_data: UpdaterData::new(),
     }
@@ -171,7 +168,6 @@ pub struct Config {
     pub shortcut_char: Option<VirtualKey>,
     pub auto_check_update: bool,
     pub auto_check_beta: bool,
-    pub update_permitted: bool,
 }
 
 const MAJOR: &'static str = "Major";

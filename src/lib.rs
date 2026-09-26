@@ -27,7 +27,7 @@ arcdps::export! {
     options_end: addon_options,
     wnd_filter: shortcuts,
     wnd_nofilter: nofilter,
-    update_url: automatic_update_checker,
+    //update_url: automatic_update_checker, Does not work with unofficial extras.
 }
 
 struct Filters {
@@ -85,7 +85,10 @@ fn init() -> Result<(), Option<String>> {
 
     let mut state = get_state();
     read_config(&mut state)?;
-    state.config.update_permitted = false; // If init is called, it means update was already called and did not update. Therefore the cached consent is no longer valid.
+    update_checker::after_update_cleanup();
+    if state.updater_data.available_version.is_none() {
+        update_checker::check_for_updates(&mut state);
+    }
 
     #[cfg(debug_assertions)] // In order to work with arcdps_mock
     {
@@ -244,23 +247,4 @@ fn nofilter(key: usize, key_down: bool, holding_key: bool) -> bool {
     }
 
     true
-}
-
-fn automatic_update_checker() -> Option<String> {
-    let mut state = get_state();
-    read_config(&mut state).ok()?;
-    let ret = update_checker::use_cached_version(&mut state);
-
-    log(&format!("automatic_update_checker returned: {ret:?}"));
-    if ret.is_some() {
-        // is going to be updated. Therefore neither init nor release will be called. So save data now or lose it
-        save_state(&mut state);
-        if let Err(_) = config::backup_config_file() { // backup the just-saved data in case the next version fucks it up
-            // abort update if backup fails
-            return None
-        }
-    } else {
-        update_checker::check_for_updates(&mut state);
-    }
-    ret
 }
