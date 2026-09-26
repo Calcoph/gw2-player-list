@@ -202,13 +202,17 @@ pub fn update(state: &mut State) {
     }
 
     // Do in another thread to not block the UI
-    std::thread::spawn(|| update_impl(version));
+    std::thread::spawn(|| {
+        update_impl(version);
+        log("update call ended");
+    });
 }
 
 const ADDON_PATH: &'static str = "addons/arcdps/player_list.dll";
 const OLD_ADDON_PATH: &'static str = "addons/arcdps/player_list.dll.old";
 const OLD_ADDON_PATH2: &'static str = "addons/arcdps/player_list.dll.old2";
 fn update_impl(version: AvailableVersion) {
+    log("Start update");
     let Some(http_client) = get_http_client() else {
         return;
     };
@@ -250,6 +254,8 @@ fn update_impl(version: AvailableVersion) {
         };
         return;
     };
+
+    log("updated")
 }
 
 pub fn after_update_cleanup() {
