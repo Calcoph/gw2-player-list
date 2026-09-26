@@ -230,7 +230,7 @@ pub struct UpdaterData {
     pub days_between_polls: i32,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
-    pub available_version: Option<AvailableVersion>, // TODO: Do something with this
+    pub available_version: Option<AvailableVersion>,
 }
 impl UpdaterData {
     fn new() -> Self {

@@ -162,6 +162,7 @@ fn choose_release(state: &State, releases: Vec<serde_json::Value>) -> Option<Ava
 }
 
 fn is_version_newer((major, minor, patch): (u32, u32, u32)) -> bool {
+    // TODO: This function should take into account current and incoming beta status. To prioritize release builds over betas with same version number
     if major > VERSION_MAJOR {
         return true;
     }
